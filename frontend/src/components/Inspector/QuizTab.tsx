@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { GraphNode, Quiz, DifficultyLevel, KnowledgeGraphData } from '../../types';
-import { generateQuizzes, submitQuizAnswer } from '../../services/api';
+import { generateQuizzes, submitQuizAnswer, createNode, createEdge, fetchTopicGraph } from '../../services/api';
 import confetti from 'canvas-confetti';
 import { MathText } from '../MathText';
 import { renderMarkdownWithMath } from '../../utils/mathRenderer';
@@ -12,6 +12,7 @@ interface QuizTabProps {
   onQuizzesGenerated: (newQuizzes: Quiz[], fullGraph?: KnowledgeGraphData) => void;
   onQuizAnswered: (quizId: string, selectedOption: number, isCorrect: boolean) => void;
   onDetachQuiz?: (quizId: string) => Promise<void>;
+  onGraphUpdated?: (fullGraph: KnowledgeGraphData) => void;
 }
 
 const DIFFICULTY_STEPS: DifficultyLevel[] = ['beginner', 'intermediate', 'advanced', 'expert'];
@@ -23,6 +24,7 @@ export const QuizTab: React.FC<QuizTabProps> = ({
   onQuizzesGenerated,
   onQuizAnswered,
   onDetachQuiz,
+  onGraphUpdated,
 }) => {
   const [quizDifficultyIndex, setQuizDifficultyIndex] = useState<number>(
     Math.max(0, DIFFICULTY_STEPS.indexOf(initialDifficulty))
@@ -30,6 +32,8 @@ export const QuizTab: React.FC<QuizTabProps> = ({
   const [isGenerating, setIsGenerating] = useState(false);
   const [detachingQuizId, setDetachingQuizId] = useState<string | null>(null);
   const [answeringQuizId, setAnsweringQuizId] = useState<string | null>(null);
+  const [forkingTrapQuizId, setForkingTrapQuizId] = useState<string | null>(null);
+  const [forkedTrapQuizIds, setForkedTrapQuizIds] = useState<Set<string>>(new Set());
 
   const selectedDifficulty = DIFFICULTY_STEPS[quizDifficultyIndex];
   const nodeQuizzes = quizzes;
@@ -78,6 +82,44 @@ export const QuizTab: React.FC<QuizTabProps> = ({
       console.error('Failed to submit answer:', err);
     } finally {
       setAnsweringQuizId(null);
+    }
+  };
+
+  const handleForkMisconception = async (quiz: Quiz) => {
+    if (!quiz.conceptual_trap || forkingTrapQuizId) return;
+    setForkingTrapQuizId(quiz.id);
+    try {
+      const trapTitle = quiz.conceptual_trap.length > 50 
+        ? `Misconception: ${quiz.conceptual_trap.slice(0, 47)}...` 
+        : `Misconception: ${quiz.conceptual_trap}`;
+
+      const createdNode = await createNode({
+        topic_id: node.topic_id,
+        title: trapTitle,
+        content: `### Identified Misconception / Conceptual Trap\n\n> "${quiz.conceptual_trap}"\n\n#### Context Question\n${quiz.question}\n\n#### Why this trap occurs\n${quiz.explanation}`,
+        node_type: 'concept',
+        pos_x: (node.pos_x || (node as any).x || 400) + (Math.random() * 120 - 60),
+        pos_y: (node.pos_y || (node as any).y || 300) + (Math.random() * 120 + 80),
+      });
+
+      await createEdge({
+        topic_id: node.topic_id,
+        source_id: createdNode.id,
+        target_id: node.id,
+        relation_type: 'challenges',
+        label: 'challenges',
+      });
+
+      setForkedTrapQuizIds(prev => new Set(prev).add(quiz.id));
+
+      if (onGraphUpdated) {
+        const freshGraph = await fetchTopicGraph(node.topic_id);
+        onGraphUpdated(freshGraph);
+      }
+    } catch (err) {
+      console.error('Failed to fork misconception node:', err);
+    } finally {
+      setForkingTrapQuizId(null);
     }
   };
 
@@ -301,8 +343,41 @@ export const QuizTab: React.FC<QuizTabProps> = ({
                       }}
                     />
                     {quiz.conceptual_trap && (
-                      <div style={{ marginTop: '8px', fontSize: '12px', color: '#fde047' }}>
-                        💡 <em>Misconception tested: <MathText text={quiz.conceptual_trap} /></em>
+                      <div style={{ marginTop: '8px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                        <div style={{ fontSize: '12px', color: '#fde047' }}>
+                          💡 <em>Misconception tested: <MathText text={quiz.conceptual_trap} /></em>
+                        </div>
+                        <div>
+                          <button
+                            onClick={() => handleForkMisconception(quiz)}
+                            disabled={forkingTrapQuizId === quiz.id || forkedTrapQuizIds.has(quiz.id)}
+                            style={{
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '5px',
+                              padding: '4px 8px',
+                              backgroundColor: forkedTrapQuizIds.has(quiz.id) ? 'rgba(74, 222, 128, 0.15)' : 'rgba(253, 224, 71, 0.15)',
+                              border: `1px solid ${forkedTrapQuizIds.has(quiz.id) ? '#4ade80' : 'rgba(253, 224, 71, 0.4)'}`,
+                              borderRadius: '4px',
+                              color: forkedTrapQuizIds.has(quiz.id) ? '#4ade80' : '#fde047',
+                              fontSize: '11px',
+                              cursor: forkedTrapQuizIds.has(quiz.id) || forkingTrapQuizId === quiz.id ? 'default' : 'pointer',
+                              fontFamily: 'var(--font-sans)',
+                              transition: 'all 120ms ease',
+                            }}
+                          >
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                              <circle cx="12" cy="12" r="10" />
+                              <line x1="12" y1="8" x2="12" y2="12" />
+                              <line x1="12" y1="16" x2="12.01" y2="16" />
+                            </svg>
+                            {forkedTrapQuizIds.has(quiz.id)
+                              ? 'Misconception Forked ✓'
+                              : forkingTrapQuizId === quiz.id
+                              ? 'Forking...'
+                              : '+ Fork Misconception Node'}
+                          </button>
+                        </div>
                       </div>
                     )}
                   </div>

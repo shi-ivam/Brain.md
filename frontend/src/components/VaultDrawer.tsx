@@ -1,5 +1,6 @@
-import React from 'react';
+import React, { useRef, useState } from 'react';
 import { Topic } from '../types';
+import { exportTopicJson, importTopicJson } from '../services/api';
 
 interface VaultDrawerProps {
   isOpen: boolean;
@@ -10,6 +11,7 @@ interface VaultDrawerProps {
   onExportTopic: (topicId: string) => void;
   onClose: () => void;
   onNewTopic: () => void;
+  onTopicImported?: (topicId: string) => void;
 }
 
 export const VaultDrawer: React.FC<VaultDrawerProps> = ({
@@ -21,7 +23,53 @@ export const VaultDrawer: React.FC<VaultDrawerProps> = ({
   onExportTopic,
   onClose,
   onNewTopic,
+  onTopicImported,
 }) => {
+  const [isExportingJson, setIsExportingJson] = useState<string | null>(null);
+  const [isImportingJson, setIsImportingJson] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleExportJson = async (topic: Topic) => {
+    setIsExportingJson(topic.id);
+    try {
+      const blob = await exportTopicJson(topic.id);
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${topic.title.toLowerCase().replace(/[^a-z0-9]+/g, '-')}-backup.json`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error('Failed to export JSON:', err);
+      alert('Failed to export JSON backup');
+    } finally {
+      setIsExportingJson(null);
+    }
+  };
+
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setIsImportingJson(true);
+    try {
+      const text = await file.text();
+      const parsed = JSON.parse(text);
+      const result = await importTopicJson(parsed);
+      if (onTopicImported) {
+        onTopicImported(result.topic_id);
+      }
+      onClose();
+    } catch (err: any) {
+      console.error('Failed to import JSON backup:', err);
+      alert(`Import failed: ${err?.message || 'Invalid JSON file'}`);
+    } finally {
+      setIsImportingJson(false);
+      if (e.target) e.target.value = '';
+    }
+  };
+
   if (!isOpen) return null;
 
   return (
@@ -72,7 +120,28 @@ export const VaultDrawer: React.FC<VaultDrawerProps> = ({
             </span>
           </div>
 
-          <div style={{ display: 'flex', gap: '8px' }}>
+          <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+            <input
+              type="file"
+              ref={fileInputRef}
+              onChange={handleFileChange}
+              accept=".json,application/json"
+              style={{ display: 'none' }}
+            />
+            <button
+              onClick={() => fileInputRef.current?.click()}
+              disabled={isImportingJson}
+              className="obsidian-btn obsidian-btn-subtle"
+              style={{ fontSize: '12px', padding: '4px 10px', display: 'flex', alignItems: 'center', gap: '5px' }}
+              title="Import Topic JSON Backup"
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                <polyline points="17 8 12 3 7 8" />
+                <line x1="12" y1="3" x2="12" y2="15" />
+              </svg>
+              {isImportingJson ? 'Importing...' : 'Import Backup'}
+            </button>
             <button onClick={onNewTopic} className="obsidian-btn obsidian-btn-primary" style={{ fontSize: '12px', padding: '4px 10px' }}>
               + New Topic
             </button>
@@ -129,6 +198,21 @@ export const VaultDrawer: React.FC<VaultDrawerProps> = ({
                   </div>
 
                   <div style={{ display: 'flex', gap: '6px' }}>
+                    <button
+                      onClick={() => handleExportJson(t)}
+                      disabled={isExportingJson === t.id}
+                      className="obsidian-btn-subtle"
+                      title="Export Topic JSON Backup"
+                      style={{ padding: '6px' }}
+                    >
+                      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                        <polyline points="14 2 14 8 20 8" />
+                        <line x1="12" y1="18" x2="12" y2="12" />
+                        <line x1="9" y1="15" x2="12" y2="18" />
+                        <line x1="15" y1="15" x2="12" y2="18" />
+                      </svg>
+                    </button>
                     <button
                       onClick={() => onExportTopic(t.id)}
                       className="obsidian-btn-subtle"

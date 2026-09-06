@@ -14,6 +14,7 @@ interface RightInspectorProps {
   inquiries: Inquiry[];
   difficulty: DifficultyLevel;
   initialTab?: 'notes' | 'questions' | 'quiz' | 'connections';
+  targetSection?: string;
   onClose: () => void;
   onNodeUpdated: (nodeId: string, newContent: string) => void;
   onInquiryAdded: (inquiry: Inquiry, fullGraph?: KnowledgeGraphData) => void;
@@ -23,6 +24,8 @@ interface RightInspectorProps {
   onDecomposeQuestion: (nodeId: string) => Promise<void>;
   onDeleteNode?: (nodeId: string) => Promise<void>;
   onDetachQuiz?: (quizId: string) => Promise<void>;
+  onGraphUpdated?: (fullGraph: KnowledgeGraphData) => void;
+  onTabChange?: (tab: 'notes' | 'questions' | 'quiz' | 'connections') => void;
 }
 
 export const RightInspector: React.FC<RightInspectorProps> = ({
@@ -33,6 +36,7 @@ export const RightInspector: React.FC<RightInspectorProps> = ({
   inquiries,
   difficulty,
   initialTab = 'notes',
+  targetSection,
   onClose,
   onNodeUpdated,
   onInquiryAdded,
@@ -42,8 +46,15 @@ export const RightInspector: React.FC<RightInspectorProps> = ({
   onDecomposeQuestion,
   onDeleteNode,
   onDetachQuiz,
+  onGraphUpdated,
+  onTabChange,
 }) => {
   const [activeTab, setActiveTab] = useState<'notes' | 'questions' | 'quiz' | 'connections'>(initialTab);
+
+  const handleTabClick = (tab: 'notes' | 'questions' | 'quiz' | 'connections') => {
+    setActiveTab(tab);
+    if (onTabChange) onTabChange(tab);
+  };
 
   useEffect(() => {
     if (node.node_type === 'quiz') {
@@ -155,7 +166,7 @@ export const RightInspector: React.FC<RightInspectorProps> = ({
         }}
       >
         <button
-          onClick={() => setActiveTab('notes')}
+          onClick={() => handleTabClick('notes')}
           style={{
             flex: 1,
             padding: '11px 0',
@@ -173,7 +184,7 @@ export const RightInspector: React.FC<RightInspectorProps> = ({
         </button>
 
         <button
-          onClick={() => setActiveTab('questions')}
+          onClick={() => handleTabClick('questions')}
           style={{
             flex: 1,
             padding: '11px 0',
@@ -191,7 +202,7 @@ export const RightInspector: React.FC<RightInspectorProps> = ({
         </button>
 
         <button
-          onClick={() => setActiveTab('quiz')}
+          onClick={() => handleTabClick('quiz')}
           style={{
             flex: 1,
             padding: '11px 0',
@@ -209,7 +220,7 @@ export const RightInspector: React.FC<RightInspectorProps> = ({
         </button>
 
         <button
-          onClick={() => setActiveTab('connections')}
+          onClick={() => handleTabClick('connections')}
           style={{
             flex: 1,
             padding: '11px 0',
@@ -232,9 +243,13 @@ export const RightInspector: React.FC<RightInspectorProps> = ({
         {activeTab === 'notes' && (
           <NoteTab
             node={node}
+            nodes={nodes}
             difficulty={difficulty}
+            targetSection={targetSection}
             onNodeUpdated={onNodeUpdated}
             onDecomposeQuestion={onDecomposeQuestion}
+            onSelectNode={onSelectNode}
+            onGraphUpdated={onGraphUpdated}
           />
         )}
 
@@ -245,6 +260,7 @@ export const RightInspector: React.FC<RightInspectorProps> = ({
             difficulty={difficulty}
             onInquiryAdded={onInquiryAdded}
             onDecomposeQuestion={onDecomposeQuestion}
+            onGraphUpdated={onGraphUpdated}
           />
         )}
 
@@ -256,6 +272,7 @@ export const RightInspector: React.FC<RightInspectorProps> = ({
             onQuizzesGenerated={onQuizzesGenerated}
             onQuizAnswered={onQuizAnswered}
             onDetachQuiz={onDetachQuiz}
+            onGraphUpdated={onGraphUpdated}
           />
         )}
 
@@ -265,6 +282,7 @@ export const RightInspector: React.FC<RightInspectorProps> = ({
             nodes={nodes}
             edges={edges}
             onSelectNode={onSelectNode}
+            onGraphUpdated={onGraphUpdated}
           />
         )}
       </div>

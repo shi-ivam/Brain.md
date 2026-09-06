@@ -1,4 +1,18 @@
-import { KnowledgeGraphData, Topic, DifficultyLevel, Quiz, Inquiry, GraphNode } from '../types';
+import {
+  KnowledgeGraphData,
+  Topic,
+  DifficultyLevel,
+  Quiz,
+  Inquiry,
+  GraphNode,
+  GraphEdge,
+  UnlinkedMention,
+  ShortestPathResult,
+  DeepSearchHit,
+  DeepSearchResponse,
+  ReviewQueueResponse,
+  NodeType,
+} from '../types';
 
 const API_BASE = '/api';
 
@@ -170,3 +184,236 @@ export async function updateNodePosition(
   if (!res.ok) throw new Error('Failed to update node position');
   return res.json();
 }
+
+export async function syncWikilinks(
+  topicId: string
+): Promise<{ message: string; added_edges: number; full_graph: KnowledgeGraphData }> {
+  const res = await fetch(`${API_BASE}/topics/${topicId}/sync-wikilinks`, {
+    method: 'POST',
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: 'Syncing wikilinks failed' }));
+    throw new Error(err.detail || 'Failed to sync wikilinks');
+  }
+  const data = await res.json();
+  const fullGraph = await fetchTopicGraph(topicId);
+  return {
+    message: data.message,
+    added_edges: data.added_edges_count ?? 0,
+    full_graph: fullGraph,
+  };
+}
+
+export async function fetchUnlinkedMentions(nodeId: string): Promise<UnlinkedMention[]> {
+  const res = await fetch(`${API_BASE}/nodes/${nodeId}/mentions`);
+  if (!res.ok) throw new Error('Failed to fetch unlinked mentions');
+  return res.json();
+}
+
+export async function findShortestPath(
+  topicId: string,
+  sourceNode: string,
+  targetNode: string
+): Promise<ShortestPathResult> {
+  const params = new URLSearchParams({
+    source_node: sourceNode,
+    target_node: targetNode,
+  });
+  const res = await fetch(`${API_BASE}/topics/${topicId}/path?${params.toString()}`);
+  if (!res.ok) throw new Error('Failed to find shortest path');
+  const data = await res.json();
+  return {
+    source_node_id: sourceNode,
+    target_node_id: targetNode,
+    path_length: data.path_length,
+    node_ids: data.node_ids,
+    edge_ids: data.edge_ids,
+    found: data.found,
+  };
+}
+
+export async function recordNodeReview(
+  nodeId: string,
+  rating: number
+): Promise<{ message: string; node: GraphNode; full_graph: KnowledgeGraphData }> {
+  const res = await fetch(`${API_BASE}/nodes/${nodeId}/review`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ rating }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: 'Failed to record review' }));
+    throw new Error(err.detail || 'Failed to record review');
+  }
+  const data = await res.json();
+  const topicId = data.topic_id;
+  if (!topicId) {
+    throw new Error('Missing topic_id in review response');
+  }
+  const fullGraph = await fetchTopicGraph(topicId);
+  const node = fullGraph.nodes.find((n) => n.id === nodeId) || ({ id: nodeId } as GraphNode);
+  return {
+    message: data.message || `Recorded SM-2 review (rating ${rating})`,
+    node,
+    full_graph: fullGraph,
+  };
+}
+
+export async function fetchReviewQueue(topicId: string): Promise<ReviewQueueResponse> {
+  const res = await fetch(`${API_BASE}/topics/${topicId}/review-queue`);
+  if (!res.ok) throw new Error('Failed to fetch review queue');
+  const dueNodes: GraphNode[] = await res.json();
+  return {
+    due_count: dueNodes.length,
+    due_nodes: dueNodes,
+  };
+}
+
+export async function linkPortalTopic(
+  nodeId: string,
+  targetTopicId: string
+): Promise<{ message: string; node: GraphNode }> {
+  const res = await fetch(`${API_BASE}/nodes/${nodeId}/link-topic`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ portal_topic_id: targetTopicId }),
+  });
+  if (!res.ok) throw new Error('Failed to link portal topic');
+  const data = await res.json();
+  return {
+    message: 'Portal topic linked successfully',
+    node: data.node,
+  };
+}
+
+export async function deepSearchTopic(topicId: string, query: string): Promise<DeepSearchResponse> {
+  const cleanQ = query.trim();
+  if (!cleanQ) {
+    return { query, total_hits: 0, hits: [] };
+  }
+  const res = await fetch(`${API_BASE}/topics/${topicId}/search?q=${encodeURIComponent(cleanQ)}`);
+  if (!res.ok) throw new Error('Failed to perform deep search');
+  const results: Array<{
+    node_id: string;
+    title: string;
+    hit_type: 'title' | 'content' | 'inquiry' | 'quiz' | 'tag';
+    snippet: string;
+    score?: number;
+  }> = await res.json();
+
+  const hits: DeepSearchHit[] = results.map((r) => {
+    let target_tab: 'notes' | 'questions' | 'quiz' | 'connections' = 'notes';
+    if (r.hit_type === 'inquiry') {
+      target_tab = 'questions';
+    } else if (r.hit_type === 'quiz') {
+      target_tab = 'quiz';
+    }
+
+    return {
+      hit_type: r.hit_type,
+      node_id: r.node_id,
+      node_title: r.title,
+      snippet: r.snippet,
+      matched_text: cleanQ,
+      target_tab,
+    };
+  });
+
+  return {
+    query,
+    total_hits: hits.length,
+    hits,
+  };
+}
+
+export async function exportTopicJson(topicId: string): Promise<Blob> {
+  const res = await fetch(`${API_BASE}/topics/${topicId}/export/json`);
+  if (!res.ok) throw new Error('Failed to export topic JSON');
+  return res.blob();
+}
+
+export async function importTopicJson(
+  data: any
+): Promise<{ message: string; topic_id: string; full_graph: KnowledgeGraphData }> {
+  const res = await fetch(`${API_BASE}/topics/import/json`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: 'Import failed' }));
+    throw new Error(err.detail || 'Failed to import topic JSON');
+  }
+  const resData = await res.json();
+  return {
+    message: 'Topic imported successfully',
+    topic_id: resData.topic_id,
+    full_graph: resData.full_graph,
+  };
+}
+
+export async function updateEdge(
+  edgeId: string,
+  data: { edge_type?: string; label?: string; relation_type?: string }
+): Promise<GraphEdge> {
+  const res = await fetch(`${API_BASE}/edges/${edgeId}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  });
+  if (!res.ok) throw new Error('Failed to update edge');
+  return res.json();
+}
+
+export interface CreateNodeParams {
+  topic_id: string;
+  title: string;
+  node_type: NodeType;
+  summary?: string;
+  content?: string;
+  parent_node_id?: string;
+  difficulty?: DifficultyLevel;
+  pos_x?: number;
+  pos_y?: number;
+  portal_topic_id?: string;
+}
+
+export async function createNode(
+  params: CreateNodeParams
+): Promise<{ id: string; title: string; node_type: string }> {
+  const res = await fetch(`${API_BASE}/nodes`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(params),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: 'Failed to create node' }));
+    throw new Error(err.detail || 'Failed to create node');
+  }
+  return res.json();
+}
+
+export interface CreateEdgeParams {
+  topic_id: string;
+  source_id: string;
+  target_id: string;
+  relation_type?: string;
+  edge_type?: string;
+  label?: string;
+}
+
+export async function createEdge(
+  params: CreateEdgeParams
+): Promise<{ id: string; source_id: string; target_id: string; relation_type: string; edge_type?: string; label?: string }> {
+  const res = await fetch(`${API_BASE}/edges`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(params),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: 'Failed to create edge' }));
+    throw new Error(err.detail || 'Failed to create edge');
+  }
+  return res.json();
+}
+

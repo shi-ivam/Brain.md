@@ -1,10 +1,93 @@
-import { marked } from 'marked';
+import { Marked } from 'marked';
 import katex from 'katex';
 
 interface MathToken {
   eq: string;
   display: boolean;
 }
+
+/**
+ * Slugifies header text for HTML id attributes and section anchoring.
+ */
+export function slugifyHeader(text: string): string {
+  return text
+    .toLowerCase()
+    .trim()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^\w\s-]/g, '')
+    .replace(/[\s_-]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+}
+
+/**
+ * Parses and renders an Obsidian wikilink token into an anchor tag.
+ */
+export function renderWikilink(inner: string): string {
+  const raw = inner.trim();
+  if (!raw) return '';
+  let target = raw;
+  let alias: string | undefined = undefined;
+
+  if (raw.includes('|')) {
+    const parts = raw.split('|');
+    target = parts[0].trim();
+    alias = parts.slice(1).join('|').trim();
+  }
+
+  if (target.includes('^')) {
+    const [title, blockId] = target.split('^');
+    const cleanTitle = title.trim();
+    const cleanBlock = blockId.trim();
+    const display = alias || `${cleanTitle} (block)`;
+    return `<a class="wikilink" data-wikilink="${cleanTitle}" data-block="${cleanBlock}" href="#/wikilink/${cleanTitle}^${cleanBlock}">${display}</a>`;
+  }
+
+  if (target.includes('#')) {
+    const [title, section] = target.split('#');
+    const cleanTitle = title.trim();
+    const cleanSection = section.trim();
+    const display = alias || `${cleanTitle} > ${cleanSection}`;
+    return `<a class="wikilink" data-wikilink="${cleanTitle}" data-section="${cleanSection}" href="#/wikilink/${cleanTitle}#${cleanSection}">${display}</a>`;
+  }
+
+  const cleanTitle = target.trim();
+  const display = alias || cleanTitle;
+  return `<a class="wikilink" data-wikilink="${cleanTitle}" href="#/wikilink/${cleanTitle}">${display}</a>`;
+}
+
+const markedInstance = new Marked();
+
+markedInstance.use({
+  renderer: {
+    heading({ text, depth }) {
+      const slug = slugifyHeader(text);
+      return `<h${depth} id="${slug}" data-heading="${text.replace(/"/g, '&quot;')}">${text}</h${depth}>\n`;
+    },
+  },
+  extensions: [
+    {
+      name: 'wikilink',
+      level: 'inline',
+      start(src) {
+        return src.indexOf('[[');
+      },
+      tokenizer(src) {
+        const match = /^\[\[(.*?)\]\]/.exec(src);
+        if (match) {
+          return {
+            type: 'wikilink',
+            raw: match[0],
+            text: match[1].trim(),
+          };
+        }
+      },
+      renderer(token) {
+        return renderWikilink((token as any).text);
+      },
+    },
+  ],
+});
 
 /**
  * Tokenizes all mathematical notation into safe placeholders:
@@ -26,6 +109,14 @@ function tokenizeMath(rawText: string): { text: string; placeholders: MathToken[
   };
 
   let text = rawText;
+
+  // Protect Obsidian wikilinks [[ ... ]] from accidental math tokenization (e.g. greek words in titles/anchors)
+  const wikilinkPlaceholders: string[] = [];
+  text = text.replace(/\[\[[\s\S]*?\]\]/g, (match) => {
+    const idx = wikilinkPlaceholders.length;
+    wikilinkPlaceholders.push(match);
+    return `@@WIKILINK_PROTECTED_${idx}@@`;
+  });
 
   // 1. Existing display math \[ ... \]
   text = text.replace(/\\\[([\s\S]*?)\\\]/g, (_, eq) => addMath(eq, true));
@@ -73,6 +164,11 @@ function tokenizeMath(rawText: string): { text: string; placeholders: MathToken[
     return addMath(`\\${m.toLowerCase()}`, false);
   });
 
+  // Restore protected wikilinks
+  text = text.replace(/@@WIKILINK_PROTECTED_(\d+)@@/g, (_, idx) => {
+    return wikilinkPlaceholders[parseInt(idx, 10)];
+  });
+
   return { text, placeholders };
 }
 
@@ -92,8 +188,8 @@ export function renderMarkdownWithMath(markdown: string): string {
     return cleanTitle ? `> **[${t}] ${cleanTitle}**\n>` : `> **[${t}]**\n>`;
   });
 
-  // Parse clean Markdown
-  let html = marked.parse(cleanText, { async: false }) as string;
+  // Parse clean Markdown with wikilink and header id support
+  let html = markedInstance.parse(cleanText, { async: false }) as string;
 
   // Inject KaTeX back in place of placeholders (avoids invalid <p><div> nesting)
   html = html.replace(/<p>\s*@@MATH_DISPLAY_(\d+)@@\s*<\/p>/g, (_, idx) => {

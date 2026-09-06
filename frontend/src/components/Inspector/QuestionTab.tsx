@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { GraphNode, Inquiry, DifficultyLevel, KnowledgeGraphData } from '../../types';
-import { askInquiry } from '../../services/api';
+import { askInquiry, createNode, createEdge, fetchTopicGraph } from '../../services/api';
 import { renderMarkdownWithMath } from '../../utils/mathRenderer';
 
 interface QuestionTabProps {
@@ -9,6 +9,7 @@ interface QuestionTabProps {
   difficulty: DifficultyLevel;
   onInquiryAdded: (inquiry: Inquiry, fullGraph?: KnowledgeGraphData) => void;
   onDecomposeQuestion: (nodeId: string) => Promise<void>;
+  onGraphUpdated?: (fullGraph: KnowledgeGraphData) => void;
 }
 
 export const QuestionTab: React.FC<QuestionTabProps> = ({
@@ -17,12 +18,15 @@ export const QuestionTab: React.FC<QuestionTabProps> = ({
   difficulty,
   onInquiryAdded,
   onDecomposeQuestion,
+  onGraphUpdated,
 }) => {
   const [questionText, setQuestionText] = useState('');
   const [pinToGraph, setPinToGraph] = useState(true);
   const [isAsking, setIsAsking] = useState(false);
   const [isDecomposing, setIsDecomposing] = useState(false);
   const [activeInquiryId, setActiveInquiryId] = useState<string | null>(null);
+  const [creatingNodeInqId, setCreatingNodeInqId] = useState<string | null>(null);
+  const [createdNodeInqIds, setCreatedNodeInqIds] = useState<Set<string>>(new Set());
 
   // Filter inquiries related to this node
   const nodeInquiries = inquiries.filter((q) => q.node_id === node.id);
@@ -53,6 +57,46 @@ export const QuestionTab: React.FC<QuestionTabProps> = ({
       console.error('Failed to decompose question:', err);
     } finally {
       setIsDecomposing(false);
+    }
+  };
+
+  const handleCreateLinkedQuestionNode = async (inq: Inquiry) => {
+    if (creatingNodeInqId) return;
+    setCreatingNodeInqId(inq.id);
+    try {
+      const title = inq.question.length > 55 ? inq.question.slice(0, 52) + '...' : inq.question;
+      const content = `### Question\n${inq.question}\n\n### Insight & Derivation\n${inq.answer}`;
+
+      const newNode = await createNode({
+        topic_id: node.topic_id,
+        title,
+        node_type: 'question',
+        summary: inq.question,
+        content,
+        parent_node_id: node.id,
+        difficulty: node.difficulty || 'intermediate',
+        pos_x: (node.pos_x || 400) + 180,
+        pos_y: (node.pos_y || 300) + 60,
+      });
+
+      await createEdge({
+        topic_id: node.topic_id,
+        source_id: node.id,
+        target_id: newNode.id,
+        relation_type: 'inquiry_branch',
+        edge_type: 'question_branch',
+        label: 'inquiry',
+      });
+
+      const updatedGraph = await fetchTopicGraph(node.topic_id);
+      if (onGraphUpdated) {
+        onGraphUpdated(updatedGraph);
+      }
+      setCreatedNodeInqIds((prev) => new Set(prev).add(inq.id));
+    } catch (err) {
+      console.error('Failed to create linked question node:', err);
+    } finally {
+      setCreatingNodeInqId(null);
     }
   };
 
@@ -197,11 +241,40 @@ export const QuestionTab: React.FC<QuestionTabProps> = ({
                 </div>
 
                 {isExpanded && (
-                  <div style={{ marginTop: '6px', borderTop: '1px solid var(--border-subtle)', paddingTop: '8px' }}>
+                  <div style={{ marginTop: '6px', borderTop: '1px solid var(--border-subtle)', paddingTop: '8px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
                     <div
                       className="markdown-body"
                       dangerouslySetInnerHTML={{ __html: renderMarkdownWithMath(inq.answer) }}
                     />
+                    <div style={{ display: 'flex', justifyContent: 'flex-end', paddingTop: '4px' }}>
+                      <button
+                        type="button"
+                        onClick={() => handleCreateLinkedQuestionNode(inq)}
+                        disabled={creatingNodeInqId === inq.id || createdNodeInqIds.has(inq.id)}
+                        className="obsidian-btn"
+                        style={{
+                          fontSize: '11px',
+                          padding: '4px 10px',
+                          borderColor: createdNodeInqIds.has(inq.id) ? '#10b981' : 'var(--tag-question-border)',
+                          color: createdNodeInqIds.has(inq.id) ? '#34d399' : 'var(--tag-question-text)',
+                          backgroundColor: createdNodeInqIds.has(inq.id) ? 'rgba(16, 185, 129, 0.12)' : 'rgba(125, 211, 252, 0.08)',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '6px',
+                        }}
+                        title="Fork this question and explanation as an independent linked Question node in the canvas"
+                      >
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                          <line x1="12" y1="5" x2="12" y2="19" />
+                          <line x1="5" y1="12" x2="19" y2="12" />
+                        </svg>
+                        {creatingNodeInqId === inq.id
+                          ? 'Creating Node...'
+                          : createdNodeInqIds.has(inq.id)
+                          ? '✓ Linked to Graph'
+                          : '+ Create Linked Question Node'}
+                      </button>
+                    </div>
                   </div>
                 )}
               </div>

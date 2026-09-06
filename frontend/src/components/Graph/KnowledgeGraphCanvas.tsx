@@ -1,5 +1,12 @@
 import React, { useRef, useEffect, useState, useCallback } from 'react';
-import { GraphNode, GraphEdge, LayoutMode, NodeType, DifficultyLevel } from '../../types';
+import {
+  GraphNode,
+  GraphEdge,
+  LayoutMode,
+  NodeType,
+  DifficultyLevel,
+  ShortestPathResult,
+} from '../../types';
 import { NodePlusPopover } from './NodePlusPopover';
 import { NodeContextMenu } from './NodeContextMenu';
 
@@ -10,7 +17,14 @@ interface KnowledgeGraphCanvasProps {
   selectedNodeId?: string;
   onSelectNode: (node: GraphNode) => void;
   onOpenAction: (
-    action: 'add_question' | 'add_note' | 'generate_quiz' | 'expand_subtopics' | 'decompose_question' | 'subquestions' | 'tested_concepts',
+    action:
+      | 'add_question'
+      | 'add_note'
+      | 'generate_quiz'
+      | 'expand_subtopics'
+      | 'decompose_question'
+      | 'subquestions'
+      | 'tested_concepts',
     node: GraphNode
   ) => void;
   difficulty: DifficultyLevel;
@@ -21,6 +35,12 @@ interface KnowledgeGraphCanvasProps {
   onSynthesizeNote?: (node: GraphNode) => void;
   onDecomposeQuestion?: (nodeId: string) => void;
   onOpenQuiz?: (node: GraphNode) => void;
+  // Features 4, 14, 16, 20, 21, 22, 23
+  lensMode?: 'all' | '1-hop' | '2-hop';
+  shortestPath?: ShortestPathResult | null;
+  colorMode?: 'default' | 'heatmap';
+  showMiniMap?: boolean;
+  onSelectEdge?: (edge: GraphEdge) => void;
 }
 
 const COLOR_MAP: Record<NodeType, { fill: string; glow: string; text: string }> = {
@@ -30,6 +50,13 @@ const COLOR_MAP: Record<NodeType, { fill: string; glow: string; text: string }> 
   question: { fill: '#7dd3fc', glow: 'rgba(125, 211, 252, 0.4)', text: '#bae6fd' },
   quiz: { fill: '#fde047', glow: 'rgba(253, 224, 71, 0.4)', text: '#fef08a' },
   note: { fill: '#6ee7b7', glow: 'rgba(110, 231, 183, 0.4)', text: '#a7f3d0' },
+};
+
+const getHeatmapColor = (score: number) => {
+  if (score === 0) return { fill: '#7f1d1d', glow: 'rgba(127, 29, 29, 0.6)', text: '#fca5a5' };
+  if (score <= 30) return { fill: '#b45309', glow: 'rgba(180, 83, 9, 0.6)', text: '#fde047' };
+  if (score <= 70) return { fill: '#0284c7', glow: 'rgba(2, 132, 199, 0.6)', text: '#bae6fd' };
+  return { fill: '#059669', glow: 'rgba(5, 150, 105, 0.6)', text: '#a7f3d0' };
 };
 
 export const KnowledgeGraphCanvas: React.FC<KnowledgeGraphCanvasProps> = ({
@@ -47,12 +74,23 @@ export const KnowledgeGraphCanvas: React.FC<KnowledgeGraphCanvasProps> = ({
   onSynthesizeNote,
   onDecomposeQuestion,
   onOpenQuiz,
+  lensMode = 'all',
+  shortestPath = null,
+  colorMode = 'default',
+  showMiniMap = true,
+  onSelectEdge,
 }) => {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
-  
+  const miniMapRef = useRef<HTMLCanvasElement | null>(null);
+
   // Transform: Pan & Zoom
   const transformRef = useRef<{ x: number; y: number; k: number }>({ x: 0, y: 0, k: 1 });
   const [transform, setTransform] = useState({ x: 0, y: 0, k: 1 });
+
+  // Camera auto-focus target
+  const cameraTargetRef = useRef<{ x: number; y: number } | null>(null);
+  const prevSelectedNodeIdRef = useRef<string | undefined>(undefined);
+  const isMiniMapDraggingRef = useRef(false);
 
   // Physics simulation state (mutable for 60fps performance)
   const simNodesRef = useRef<GraphNode[]>([]);
@@ -67,6 +105,17 @@ export const KnowledgeGraphCanvas: React.FC<KnowledgeGraphCanvasProps> = ({
   const [contextMenu, setContextMenu] = useState<{ node: GraphNode; x: number; y: number } | null>(null);
 
   const lastLayoutModeRef = useRef<LayoutMode>(layoutMode);
+
+  // Smoothly center camera on selected node when selectedNodeId changes
+  useEffect(() => {
+    if (selectedNodeId && selectedNodeId !== prevSelectedNodeIdRef.current) {
+      const target = simNodesRef.current.find((n) => n.id === selectedNodeId);
+      if (target && target.x !== undefined && target.y !== undefined) {
+        cameraTargetRef.current = { x: target.x, y: target.y };
+      }
+    }
+    prevSelectedNodeIdRef.current = selectedNodeId;
+  }, [selectedNodeId]);
 
   // Initialize simulation positions based on layoutMode
   useEffect(() => {
@@ -311,10 +360,34 @@ export const KnowledgeGraphCanvas: React.FC<KnowledgeGraphCanvasProps> = ({
         node.y = (node.y || 0) + (node.vy || 0);
       });
 
-      // --- Drawing Step ---
-      const dpr = window.devicePixelRatio || 1;
+      // --- Target Node Focus Camera Interpolation ---
       const width = canvas.clientWidth;
       const height = canvas.clientHeight;
+      if (
+        cameraTargetRef.current &&
+        !isPanningRef.current &&
+        !draggingNodeRef.current &&
+        !isMiniMapDraggingRef.current
+      ) {
+        const k = transformRef.current.k;
+        const targetPanX = width / 2 - cameraTargetRef.current.x * k;
+        const targetPanY = height / 2 - cameraTargetRef.current.y * k;
+        const dx = targetPanX - transformRef.current.x;
+        const dy = targetPanY - transformRef.current.y;
+        if (Math.abs(dx) > 0.8 || Math.abs(dy) > 0.8) {
+          transformRef.current.x += dx * 0.1;
+          transformRef.current.y += dy * 0.1;
+          setTransform({ ...transformRef.current });
+        } else {
+          transformRef.current.x = targetPanX;
+          transformRef.current.y = targetPanY;
+          setTransform({ ...transformRef.current });
+          cameraTargetRef.current = null;
+        }
+      }
+
+      // --- Drawing Step ---
+      const dpr = window.devicePixelRatio || 1;
       if (canvas.width !== width * dpr || canvas.height !== height * dpr) {
         canvas.width = width * dpr;
         canvas.height = height * dpr;
@@ -332,10 +405,10 @@ export const KnowledgeGraphCanvas: React.FC<KnowledgeGraphCanvasProps> = ({
       // Draw subtle grid dots (Obsidian background feel)
       ctx.fillStyle = '#222226';
       const gridSize = 40;
-      const startX = Math.floor((-panX / k) / gridSize) * gridSize;
-      const endX = Math.ceil(((-panX + width) / k) / gridSize) * gridSize;
-      const startY = Math.floor((-panY / k) / gridSize) * gridSize;
-      const endY = Math.ceil(((-panY + height) / k) / gridSize) * gridSize;
+      const startX = Math.floor(-panX / k / gridSize) * gridSize;
+      const endX = Math.ceil((-panX + width) / k / gridSize) * gridSize;
+      const startY = Math.floor(-panY / k / gridSize) * gridSize;
+      const endY = Math.ceil((-panY + height) / k / gridSize) * gridSize;
 
       for (let gx = startX; gx <= endX; gx += gridSize) {
         for (let gy = startY; gy <= endY; gy += gridSize) {
@@ -345,6 +418,23 @@ export const KnowledgeGraphCanvas: React.FC<KnowledgeGraphCanvasProps> = ({
 
       const selectedNode = selectedNodeId ? nodeMap.get(selectedNodeId) : null;
       const hoveredNode = hoveredNodeRef.current;
+
+      // Calculate Lens Neighborhood Set (1-hop or 2-hop)
+      const lensNodeIds = new Set<string>();
+      if (selectedNode && lensMode !== 'all') {
+        lensNodeIds.add(selectedNode.id);
+        edges.forEach((e) => {
+          if (e.source_id === selectedNode.id) lensNodeIds.add(e.target_id);
+          if (e.target_id === selectedNode.id) lensNodeIds.add(e.source_id);
+        });
+        if (lensMode === '2-hop') {
+          const hop1 = new Set(lensNodeIds);
+          edges.forEach((e) => {
+            if (hop1.has(e.source_id)) lensNodeIds.add(e.target_id);
+            if (hop1.has(e.target_id)) lensNodeIds.add(e.source_id);
+          });
+        }
+      }
 
       // Draw Edges
       edges.forEach((edge) => {
@@ -358,6 +448,14 @@ export const KnowledgeGraphCanvas: React.FC<KnowledgeGraphCanvasProps> = ({
         const isHighlighted =
           (selectedNode && (src.id === selectedNode.id || tgt.id === selectedNode.id)) ||
           (hoveredNode && (src.id === hoveredNode.id || tgt.id === hoveredNode.id));
+
+        const edgeInLens =
+          lensMode === 'all' ||
+          !selectedNode ||
+          (lensNodeIds.has(edge.source_id) && lensNodeIds.has(edge.target_id));
+
+        ctx.save();
+        ctx.globalAlpha = edgeInLens ? 1.0 : 0.05;
 
         ctx.beginPath();
         ctx.moveTo(src.x || 0, src.y || 0);
@@ -399,7 +497,91 @@ export const KnowledgeGraphCanvas: React.FC<KnowledgeGraphCanvasProps> = ({
           ctx.fill();
           ctx.restore();
         }
+
+        // Feature 23: Canvas Edge Labels (zoom >= 0.75)
+        const labelText = edge.label || (edge.edge_type && edge.edge_type !== 'related_to' ? edge.edge_type : '');
+        if (k >= 0.75 && labelText && edgeInLens) {
+          const midX = ((src.x || 0) + (tgt.x || 0)) / 2;
+          const midY = ((src.y || 0) + (tgt.y || 0)) / 2;
+          let labelAngle = Math.atan2(dy, dx);
+          if (labelAngle > Math.PI / 2 || labelAngle < -Math.PI / 2) {
+            labelAngle += Math.PI;
+          }
+
+          ctx.save();
+          ctx.translate(midX, midY);
+          ctx.rotate(labelAngle);
+          ctx.font = `${Math.max(9, 10 / k)}px Geist Mono, monospace`;
+          const textMetrics = ctx.measureText(labelText);
+          const padH = 4 / k;
+          const padV = 2 / k;
+          const boxW = textMetrics.width + padH * 2;
+          const boxH = 12 / k;
+
+          ctx.fillStyle = 'rgba(20, 20, 24, 0.85)';
+          ctx.fillRect(-boxW / 2, -boxH / 2, boxW, boxH);
+          ctx.strokeStyle = 'rgba(255, 255, 255, 0.12)';
+          ctx.lineWidth = 0.8 / k;
+          ctx.strokeRect(-boxW / 2, -boxH / 2, boxW, boxH);
+
+          ctx.fillStyle = isHighlighted ? '#c4b5fd' : '#94a3b8';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText(labelText, 0, 0);
+          ctx.restore();
+        }
+
+        ctx.restore();
       });
+
+      // Feature 16: Shortest Path Trail (animated golden dashed trail with pulsing arrows)
+      if (shortestPath && shortestPath.found && shortestPath.node_ids.length >= 2) {
+        ctx.save();
+        const nowTime = performance.now();
+        const dashOffset = -(nowTime / 22) % 24;
+        ctx.strokeStyle = '#f59e0b';
+        ctx.lineWidth = 2.8 / k;
+        ctx.setLineDash([8 / k, 4 / k]);
+        ctx.lineDashOffset = dashOffset;
+        ctx.shadowColor = 'rgba(245, 158, 11, 0.8)';
+        ctx.shadowBlur = 10;
+
+        for (let i = 0; i < shortestPath.node_ids.length - 1; i++) {
+          const u = nodeMap.get(shortestPath.node_ids[i]);
+          const v = nodeMap.get(shortestPath.node_ids[i + 1]);
+          if (u && v) {
+            ctx.beginPath();
+            ctx.moveTo(u.x || 0, u.y || 0);
+            ctx.lineTo(v.x || 0, v.y || 0);
+            ctx.stroke();
+
+            // Pulsing directional arrow along segment
+            const dx = (v.x || 0) - (u.x || 0);
+            const dy = (v.y || 0) - (u.y || 0);
+            const dist = Math.hypot(dx, dy);
+            if (dist > 20) {
+              const tProgress = (nowTime / 1000 + i * 0.25) % 1;
+              const ax = (u.x || 0) + dx * tProgress;
+              const ay = (u.y || 0) + dy * tProgress;
+              const angle = Math.atan2(dy, dx);
+              ctx.save();
+              ctx.translate(ax, ay);
+              ctx.rotate(angle);
+              ctx.beginPath();
+              ctx.moveTo(0, 0);
+              ctx.lineTo(-7 / k, -3.5 / k);
+              ctx.lineTo(-7 / k, 3.5 / k);
+              ctx.closePath();
+              ctx.fillStyle = '#fbbf24';
+              ctx.shadowColor = '#fbbf24';
+              ctx.shadowBlur = 6;
+              ctx.fill();
+              ctx.restore();
+            }
+          }
+        }
+        ctx.restore();
+      }
 
       // Draw Nodes
       simNodes.forEach((node) => {
@@ -410,12 +592,96 @@ export const KnowledgeGraphCanvas: React.FC<KnowledgeGraphCanvasProps> = ({
         const r = node.radius || 8;
         const isSelected = node.id === selectedNodeId;
         const isHovered = hoveredNode?.id === node.id;
+        const isPathNode = shortestPath && shortestPath.found && shortestPath.node_ids.includes(node.id);
+        const nodeInLens = lensMode === 'all' || !selectedNode || lensNodeIds.has(node.id);
+
         const matchesSearch =
           !searchFilter ||
           node.title.toLowerCase().includes(searchFilter.toLowerCase()) ||
           (node.summary && node.summary.toLowerCase().includes(searchFilter.toLowerCase()));
 
-        const style = COLOR_MAP[node.node_type] || COLOR_MAP.concept;
+        // Color selection: Heatmap vs Default
+        const score = Math.max(0, Math.min(100, node.mastery_score || 0));
+        const baseStyle = COLOR_MAP[node.node_type] || COLOR_MAP.concept;
+        const heatmapStyle = getHeatmapColor(score);
+        const style = colorMode === 'heatmap' ? heatmapStyle : baseStyle;
+
+        ctx.save();
+        ctx.globalAlpha = nodeInLens ? 1.0 : 0.12;
+
+        // Feature 16: Shortest path golden glow
+        if (isPathNode) {
+          ctx.save();
+          ctx.beginPath();
+          ctx.arc(nx, ny, r + 7, 0, Math.PI * 2);
+          ctx.fillStyle = 'rgba(245, 158, 11, 0.4)';
+          ctx.shadowColor = '#f59e0b';
+          ctx.shadowBlur = 12;
+          ctx.fill();
+          ctx.restore();
+        }
+
+        // Feature 15: Portal Node Indicator (swirling orbital rings)
+        if (node.portal_topic_id) {
+          const swirlT = (performance.now() / 600) % (Math.PI * 2);
+          ctx.save();
+          ctx.translate(nx, ny);
+          ctx.rotate(swirlT);
+          ctx.beginPath();
+          ctx.arc(0, 0, r + 6, 0, Math.PI * 1.3);
+          ctx.strokeStyle = '#c084fc';
+          ctx.lineWidth = 1.8 / k;
+          ctx.stroke();
+
+          ctx.beginPath();
+          ctx.arc(0, 0, r + 6, Math.PI, Math.PI * 2.3);
+          ctx.strokeStyle = '#818cf8';
+          ctx.lineWidth = 1.8 / k;
+          ctx.stroke();
+          ctx.restore();
+        }
+
+        // Feature 20: Dynamic Mastery Rings
+        ctx.save();
+        if (score === 0) {
+          ctx.beginPath();
+          ctx.arc(nx, ny, r + 3, 0, Math.PI * 2);
+          ctx.strokeStyle = 'rgba(168, 168, 179, 0.35)';
+          ctx.lineWidth = 1.2 / k;
+          ctx.setLineDash([3 / k, 3 / k]);
+          ctx.stroke();
+        } else {
+          // Track
+          ctx.beginPath();
+          ctx.arc(nx, ny, r + 3, 0, Math.PI * 2);
+          ctx.strokeStyle = 'rgba(255, 255, 255, 0.08)';
+          ctx.lineWidth = 1.2 / k;
+          ctx.stroke();
+
+          // Arc
+          let ringColor = '#f59e0b'; // amber (< 50)
+          let ringGlow = 'rgba(245, 158, 11, 0.5)';
+          if (score >= 80) {
+            ringColor = '#10b981'; // emerald (>= 80)
+            ringGlow = 'rgba(16, 185, 129, 0.7)';
+          } else if (score >= 50) {
+            ringColor = '#38bdf8'; // cyan/blue (>= 50)
+            ringGlow = 'rgba(56, 189, 248, 0.6)';
+          }
+
+          const startAngle = -Math.PI / 2;
+          const endAngle = startAngle + (score / 100) * Math.PI * 2;
+          ctx.beginPath();
+          ctx.arc(nx, ny, r + 3, startAngle, endAngle);
+          ctx.strokeStyle = ringColor;
+          ctx.lineWidth = 1.8 / k;
+          if (score >= 80) {
+            ctx.shadowColor = ringGlow;
+            ctx.shadowBlur = 6;
+          }
+          ctx.stroke();
+        }
+        ctx.restore();
 
         // Glow halo for selected / hovered
         if (isSelected || isHovered) {
@@ -439,6 +705,34 @@ export const KnowledgeGraphCanvas: React.FC<KnowledgeGraphCanvasProps> = ({
           ctx.lineWidth = 1 / k;
           ctx.strokeStyle = '#121214';
           ctx.stroke();
+        }
+
+        // Feature 4: Target Node Pulse Camera (Expanding animated pulse ring in obsidian cyan/gold)
+        if (isSelected) {
+          const nowTime = performance.now();
+          const pulsePhase = (nowTime % 1800) / 1800; // 0 to 1
+          const pulseRadius = r + 4 + pulsePhase * 24;
+          const pulseAlpha = Math.max(0, 1 - pulsePhase);
+
+          ctx.save();
+          ctx.beginPath();
+          ctx.arc(nx, ny, pulseRadius, 0, Math.PI * 2);
+          ctx.strokeStyle = `rgba(56, 189, 248, ${pulseAlpha * 0.85})`;
+          ctx.lineWidth = 2.2 / k;
+          ctx.shadowColor = 'rgba(56, 189, 248, 0.7)';
+          ctx.shadowBlur = 8;
+          ctx.stroke();
+
+          const innerPhase = ((nowTime + 900) % 1800) / 1800;
+          const innerRadius = r + 4 + innerPhase * 24;
+          const innerAlpha = Math.max(0, 1 - innerPhase);
+          ctx.beginPath();
+          ctx.arc(nx, ny, innerRadius, 0, Math.PI * 2);
+          ctx.strokeStyle = `rgba(245, 158, 11, ${innerAlpha * 0.6})`;
+          ctx.lineWidth = 1.4 / k;
+          ctx.shadowColor = 'rgba(245, 158, 11, 0.6)';
+          ctx.stroke();
+          ctx.restore();
         }
 
         // Draw Small '+' button icon badge when hovered or selected
@@ -467,29 +761,143 @@ export const KnowledgeGraphCanvas: React.FC<KnowledgeGraphCanvasProps> = ({
           ctx.stroke();
         }
 
-        // Node Label
+        // Portal badge icon if node is portal
+        if (node.portal_topic_id) {
+          const badgeX = nx - r - 4;
+          const badgeY = ny - r - 2;
+          ctx.save();
+          ctx.font = `${Math.max(8, 9 / k)}px Geist Mono, monospace`;
+          ctx.fillStyle = '#c084fc';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText('⟡', badgeX, badgeY);
+          ctx.restore();
+        }
+
+        // Node Label & Mastery Star/%
         if (k > 0.45 || isHovered || isSelected) {
           ctx.font = `${Math.max(10, Math.min(13, 11 / k))}px Geist, -apple-system, sans-serif`;
           ctx.fillStyle = matchesSearch ? (isSelected ? '#ffffff' : style.text) : '#6b6b75';
           ctx.textAlign = 'center';
           ctx.textBaseline = 'top';
 
-          // Truncate long labels unless hovered/selected
           let labelText = node.title;
           if (!isHovered && !isSelected && labelText.length > 22) {
             labelText = labelText.slice(0, 20) + '...';
           }
           ctx.fillText(labelText, nx, ny + r + 4);
+
+          // Feature 20: Display small mastery % or star if hovered or zoomed in (k >= 0.75)
+          if ((k >= 0.75 || isHovered) && node.mastery_score !== undefined) {
+            ctx.font = `${Math.max(8, 9 / k)}px Geist Mono, monospace`;
+            ctx.fillStyle = score >= 80 ? '#10b981' : score >= 50 ? '#38bdf8' : score > 0 ? '#f59e0b' : '#9ca3af';
+            const badgeText = score >= 80 ? `★ ${score}%` : `${score}%`;
+            ctx.fillText(badgeText, nx, ny + r + 18 / k);
+          }
         }
+
+        ctx.restore();
       });
 
       ctx.restore();
+
+      // Feature 22: Interactive Canvas Mini-Map (160x110px)
+      if (miniMapRef.current && showMiniMap) {
+        const mCanvas = miniMapRef.current;
+        const mCtx = mCanvas.getContext('2d');
+        if (mCtx) {
+          mCtx.clearRect(0, 0, 160, 110);
+          mCtx.fillStyle = '#18181b';
+          mCtx.fillRect(0, 0, 160, 110);
+
+          if (simNodes.length > 0) {
+            let minX = Infinity,
+              maxX = -Infinity,
+              minY = Infinity,
+              maxY = -Infinity;
+            simNodes.forEach((n) => {
+              const nx = n.x ?? n.pos_x ?? 0;
+              const ny = n.y ?? n.pos_y ?? 0;
+              if (nx < minX) minX = nx;
+              if (nx > maxX) maxX = nx;
+              if (ny < minY) minY = ny;
+              if (ny > maxY) maxY = ny;
+            });
+
+            const padding = 80;
+            const bW = Math.max(100, maxX - minX + padding * 2);
+            const bH = Math.max(80, maxY - minY + padding * 2);
+            const scale = Math.min((160 - 16) / bW, (110 - 16) / bH);
+            const offX = (160 - bW * scale) / 2;
+            const offY = (110 - bH * scale) / 2;
+
+            const toMini = (wx: number, wy: number) => ({
+              x: offX + (wx - (minX - padding)) * scale,
+              y: offY + (wy - (minY - padding)) * scale,
+            });
+
+            // Mini Edges
+            mCtx.strokeStyle = 'rgba(255, 255, 255, 0.08)';
+            mCtx.lineWidth = 0.8;
+            edges.forEach((e) => {
+              const s = nodeMap.get(e.source_id);
+              const t = nodeMap.get(e.target_id);
+              if (s && t) {
+                const p1 = toMini(s.x || 0, s.y || 0);
+                const p2 = toMini(t.x || 0, t.y || 0);
+                mCtx.beginPath();
+                mCtx.moveTo(p1.x, p1.y);
+                mCtx.lineTo(p2.x, p2.y);
+                mCtx.stroke();
+              }
+            });
+
+            // Mini Nodes
+            simNodes.forEach((n) => {
+              const p = toMini(n.x || 0, n.y || 0);
+              const isSel = n.id === selectedNodeId;
+              mCtx.beginPath();
+              mCtx.arc(p.x, p.y, isSel ? 3.5 : 2, 0, Math.PI * 2);
+              mCtx.fillStyle = isSel ? '#38bdf8' : (COLOR_MAP[n.node_type]?.fill || '#a8a8b3');
+              mCtx.fill();
+            });
+
+            // Mini Viewport Wireframe
+            const vLeft = -panX / k;
+            const vTop = -panY / k;
+            const vW = width / k;
+            const vH = height / k;
+
+            const pTL = toMini(vLeft, vTop);
+            const pBR = toMini(vLeft + vW, vTop + vH);
+            const wBox = pBR.x - pTL.x;
+            const hBox = pBR.y - pTL.y;
+
+            mCtx.fillStyle = 'rgba(56, 189, 248, 0.12)';
+            mCtx.fillRect(pTL.x, pTL.y, wBox, hBox);
+            mCtx.strokeStyle = 'rgba(56, 189, 248, 0.85)';
+            mCtx.lineWidth = 1.2;
+            mCtx.strokeRect(pTL.x, pTL.y, wBox, hBox);
+          }
+        }
+      }
+
       animationFrameId = requestAnimationFrame(render);
     };
 
     render();
     return () => cancelAnimationFrame(animationFrameId);
-  }, [edges, selectedNodeId, searchFilter, activeFilters, layoutMode]);
+  }, [
+    edges,
+    selectedNodeId,
+    searchFilter,
+    activeFilters,
+    layoutMode,
+    lensMode,
+    shortestPath,
+    colorMode,
+    showMiniMap,
+  ]);
 
   useEffect(() => {
     (window as any).__graphHelper = {
@@ -561,6 +969,96 @@ export const KnowledgeGraphCanvas: React.FC<KnowledgeGraphCanvasProps> = ({
     return null;
   };
 
+  // Find edge under mouse for click selection
+  const getEdgeAtWorldPos = (worldX: number, worldY: number) => {
+    const { k } = transformRef.current;
+    const threshold = 10 / k;
+    const nodeMap = new Map<string, GraphNode>();
+    simNodesRef.current.forEach((n) => nodeMap.set(n.id, n));
+
+    for (let i = edges.length - 1; i >= 0; i--) {
+      const edge = edges[i];
+      const src = nodeMap.get(edge.source_id);
+      const tgt = nodeMap.get(edge.target_id);
+      if (!src || !tgt) continue;
+      const x1 = src.x || 0;
+      const y1 = src.y || 0;
+      const x2 = tgt.x || 0;
+      const y2 = tgt.y || 0;
+      const l2 = (x2 - x1) ** 2 + (y2 - y1) ** 2;
+      if (l2 === 0) continue;
+      let t = ((worldX - x1) * (x2 - x1) + (worldY - y1) * (y2 - y1)) / l2;
+      t = Math.max(0, Math.min(1, t));
+      const dist = Math.hypot(worldX - (x1 + t * (x2 - x1)), worldY - (y1 + t * (y2 - y1)));
+      if (dist <= threshold) {
+        return edge;
+      }
+    }
+    return null;
+  };
+
+  // Mini-map interaction
+  const handleMiniMapClickOrDrag = (clientX: number, clientY: number) => {
+    const miniCanvas = miniMapRef.current;
+    const mainCanvas = canvasRef.current;
+    if (!miniCanvas || !mainCanvas) return;
+    const rect = miniCanvas.getBoundingClientRect();
+    const mx = clientX - rect.left;
+    const my = clientY - rect.top;
+
+    const simNodes = simNodesRef.current;
+    if (simNodes.length === 0) return;
+
+    let minX = Infinity,
+      maxX = -Infinity,
+      minY = Infinity,
+      maxY = -Infinity;
+    simNodes.forEach((n) => {
+      const nx = n.x ?? n.pos_x ?? 0;
+      const ny = n.y ?? n.pos_y ?? 0;
+      if (nx < minX) minX = nx;
+      if (nx > maxX) maxX = nx;
+      if (ny < minY) minY = ny;
+      if (ny > maxY) maxY = ny;
+    });
+
+    const padding = 80;
+    const bW = Math.max(100, maxX - minX + padding * 2);
+    const bH = Math.max(80, maxY - minY + padding * 2);
+    const scale = Math.min((160 - 16) / bW, (110 - 16) / bH);
+    const offX = (160 - bW * scale) / 2;
+    const offY = (110 - bH * scale) / 2;
+
+    const targetWorldX = minX - padding + (mx - offX) / scale;
+    const targetWorldY = minY - padding + (my - offY) / scale;
+
+    const k = transformRef.current.k;
+    const newPanX = mainCanvas.clientWidth / 2 - targetWorldX * k;
+    const newPanY = mainCanvas.clientHeight / 2 - targetWorldY * k;
+
+    cameraTargetRef.current = null;
+    transformRef.current = { ...transformRef.current, x: newPanX, y: newPanY };
+    setTransform({ ...transformRef.current });
+  };
+
+  const handleMiniMapMouseDown = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    isMiniMapDraggingRef.current = true;
+    handleMiniMapClickOrDrag(e.clientX, e.clientY);
+  };
+
+  const handleMiniMapMouseMove = (e: React.MouseEvent) => {
+    if (isMiniMapDraggingRef.current) {
+      e.stopPropagation();
+      handleMiniMapClickOrDrag(e.clientX, e.clientY);
+    }
+  };
+
+  const handleMiniMapMouseUp = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    isMiniMapDraggingRef.current = false;
+  };
+
   // Mouse / Pointer Handlers
   const handleMouseDown = (e: React.MouseEvent<HTMLCanvasElement>) => {
     const rect = canvasRef.current?.getBoundingClientRect();
@@ -570,6 +1068,7 @@ export const KnowledgeGraphCanvas: React.FC<KnowledgeGraphCanvasProps> = ({
 
     const hitNode = getNodeAtScreenPos(screenX, screenY);
     if (hitNode) {
+      cameraTargetRef.current = null;
       const worldPos = screenToWorld(screenX, screenY);
       const { k } = transformRef.current;
       const r = hitNode.radius || 8;
@@ -579,7 +1078,6 @@ export const KnowledgeGraphCanvas: React.FC<KnowledgeGraphCanvasProps> = ({
       const distToPlus = Math.hypot(worldPos.x - plusX, worldPos.y - plusY);
 
       if (distToPlus <= 14 / k) {
-        // Clicked the small '+' icon!
         const screenCoords = worldToScreen(hitNode.x || 0, hitNode.y || 0);
         setPlusPopover({
           node: hitNode,
@@ -593,7 +1091,16 @@ export const KnowledgeGraphCanvas: React.FC<KnowledgeGraphCanvasProps> = ({
       draggingNodeRef.current = hitNode;
       onSelectNode(hitNode);
     } else {
+      if (onSelectEdge) {
+        const worldPos = screenToWorld(screenX, screenY);
+        const hitEdge = getEdgeAtWorldPos(worldPos.x, worldPos.y);
+        if (hitEdge) {
+          onSelectEdge(hitEdge);
+          return;
+        }
+      }
       isPanningRef.current = true;
+      cameraTargetRef.current = null;
       lastMousePosRef.current = { x: e.clientX, y: e.clientY };
       setPlusPopover(null);
     }
@@ -687,6 +1194,7 @@ export const KnowledgeGraphCanvas: React.FC<KnowledgeGraphCanvasProps> = ({
     const newX = mouseX - (mouseX - current.x) * (newK / current.k);
     const newY = mouseY - (mouseY - current.y) * (newK / current.k);
 
+    cameraTargetRef.current = null;
     transformRef.current = { x: newX, y: newY, k: newK };
     setTransform({ x: newX, y: newY, k: newK });
   };
@@ -727,6 +1235,38 @@ export const KnowledgeGraphCanvas: React.FC<KnowledgeGraphCanvasProps> = ({
         }}
       />
 
+      {/* Interactive Mini-Map (Feature 22) */}
+      {showMiniMap && (
+        <div
+          style={{
+            position: 'absolute',
+            bottom: '16px',
+            right: '16px',
+            width: '160px',
+            height: '110px',
+            backgroundColor: 'rgba(24, 24, 27, 0.92)',
+            backdropFilter: 'blur(8px)',
+            border: '1px solid var(--border-subtle)',
+            borderRadius: '6px',
+            overflow: 'hidden',
+            boxShadow: '0 4px 16px rgba(0, 0, 0, 0.5)',
+            cursor: 'crosshair',
+            zIndex: 20,
+          }}
+          onMouseDown={handleMiniMapMouseDown}
+          onMouseMove={handleMiniMapMouseMove}
+          onMouseUp={handleMiniMapMouseUp}
+          title="Canvas Mini-Map (Click or drag to navigate)"
+        >
+          <canvas
+            ref={miniMapRef}
+            width={160}
+            height={110}
+            style={{ width: '100%', height: '100%', display: 'block' }}
+          />
+        </div>
+      )}
+
       {/* Floating '+' Action Popover */}
       {plusPopover && (
         <NodePlusPopover
@@ -753,10 +1293,14 @@ export const KnowledgeGraphCanvas: React.FC<KnowledgeGraphCanvasProps> = ({
           onSynthesizeNote={onSynthesizeNote ? (n) => onSynthesizeNote(n) : undefined}
           onDecomposeQuestion={onDecomposeQuestion ? (id) => onDecomposeQuestion(id) : undefined}
           onOpenQuiz={onOpenQuiz ? (n) => onOpenQuiz(n) : undefined}
-          onDeleteNode={onDeleteNode ? (id) => {
-            onDeleteNode(id);
-            setContextMenu(null);
-          } : () => {}}
+          onDeleteNode={
+            onDeleteNode
+              ? (id) => {
+                  onDeleteNode(id);
+                  setContextMenu(null);
+                }
+              : () => {}
+          }
           onClose={() => setContextMenu(null)}
         />
       )}

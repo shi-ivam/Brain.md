@@ -1,11 +1,15 @@
-import React, { useState } from 'react';
-import { DifficultyLevel } from '../types';
+import React, { useState, useEffect } from 'react';
+import { DifficultyLevel, DeepSearchHit } from '../types';
+import { deepSearchTopic } from '../services/api';
 
 interface SpotlightSearchProps {
   onSearch: (topic: string, difficulty: DifficultyLevel) => Promise<void>;
   isLoading: boolean;
   onClose?: () => void;
   isOverlay?: boolean;
+  activeTopicId?: string | null;
+  activeTopicTitle?: string;
+  onSelectNode?: (nodeId: string, targetTab?: 'notes' | 'questions' | 'quiz' | 'connections') => void;
 }
 
 const EXAMPLE_TOPICS = [
@@ -43,15 +47,59 @@ export const SpotlightSearch: React.FC<SpotlightSearchProps> = ({
   isLoading,
   onClose,
   isOverlay = false,
+  activeTopicId,
+  activeTopicTitle,
+  onSelectNode,
 }) => {
   const [topic, setTopic] = useState('');
   const [difficultyIndex, setDifficultyIndex] = useState<number>(1); // default 'intermediate'
   const [loadingStep, setLoadingStep] = useState('Querying Vertex AI gemini-3.8-flash in global region...');
 
+  // Deep Search state
+  const [deepHits, setDeepHits] = useState<DeepSearchHit[]>([]);
+  const [isSearching, setIsSearching] = useState(false);
+  const [selectedHitIndex, setSelectedHitIndex] = useState<number>(-1);
+
   const currentDifficulty = DIFFICULTY_STEPS[difficultyIndex];
+
+  // Perform deep search within active topic when typing
+  useEffect(() => {
+    const q = topic.trim();
+    if (!activeTopicId || !q) {
+      setDeepHits([]);
+      setIsSearching(false);
+      setSelectedHitIndex(-1);
+      return;
+    }
+
+    setIsSearching(true);
+    const timer = setTimeout(async () => {
+      try {
+        const res = await deepSearchTopic(activeTopicId, q);
+        setDeepHits(res.hits);
+        setSelectedHitIndex(-1);
+      } catch (err) {
+        console.error('Deep search failed:', err);
+        setDeepHits([]);
+      } finally {
+        setIsSearching(false);
+      }
+    }, 200);
+
+    return () => clearTimeout(timer);
+  }, [topic, activeTopicId]);
 
   const handleSubmit = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
+
+    // If an item in search results is highlighted, select it
+    if (selectedHitIndex >= 0 && selectedHitIndex < deepHits.length && onSelectNode) {
+      const hit = deepHits[selectedHitIndex];
+      onSelectNode(hit.node_id, hit.target_tab);
+      if (onClose) onClose();
+      return;
+    }
+
     const cleanTopic = topic.trim();
     if (!cleanTopic || isLoading) return;
 
@@ -72,9 +120,39 @@ export const SpotlightSearch: React.FC<SpotlightSearchProps> = ({
     }
   };
 
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (deepHits.length === 0) return;
+
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      setSelectedHitIndex((prev) => (prev < deepHits.length - 1 ? prev + 1 : 0));
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      setSelectedHitIndex((prev) => (prev > 0 ? prev - 1 : deepHits.length - 1));
+    } else if (e.key === 'Enter' && selectedHitIndex >= 0 && onSelectNode) {
+      e.preventDefault();
+      const hit = deepHits[selectedHitIndex];
+      onSelectNode(hit.node_id, hit.target_tab);
+      if (onClose) onClose();
+    }
+  };
+
   const handleChipClick = (chip: string) => {
     setTopic(chip);
   };
+
+  const handleHitClick = (hit: DeepSearchHit) => {
+    if (onSelectNode) {
+      onSelectNode(hit.node_id, hit.target_tab);
+      if (onClose) onClose();
+    }
+  };
+
+  // Group deep search results by category
+  const conceptHits = deepHits.filter((h) => h.hit_type === 'title' || h.hit_type === 'tag');
+  const contentHits = deepHits.filter((h) => h.hit_type === 'content');
+  const inquiryHits = deepHits.filter((h) => h.hit_type === 'inquiry');
+  const quizHits = deepHits.filter((h) => h.hit_type === 'quiz');
 
   return (
     <div
@@ -84,12 +162,14 @@ export const SpotlightSearch: React.FC<SpotlightSearchProps> = ({
         backgroundColor: 'var(--bg-panel)',
         border: '1px solid var(--border-subtle)',
         borderRadius: '8px',
-        padding: '28px',
-        boxShadow: '0 8px 32px rgba(0, 0, 0, 0.4)',
+        padding: '24px',
+        boxShadow: '0 8px 32px rgba(0, 0, 0, 0.5)',
         display: 'flex',
         flexDirection: 'column',
-        gap: '20px',
+        gap: '18px',
         position: 'relative',
+        maxHeight: isOverlay ? '85vh' : undefined,
+        overflowY: isOverlay ? 'auto' : undefined,
       }}
     >
       {isOverlay && onClose && (
@@ -108,16 +188,18 @@ export const SpotlightSearch: React.FC<SpotlightSearchProps> = ({
 
       {/* Header */}
       <div>
-        <h2 style={{ fontSize: '20px', margin: '0 0 4px 0', fontWeight: 500 }}>
-          What would you like to master?
+        <h2 style={{ fontSize: '19px', margin: '0 0 4px 0', fontWeight: 500 }}>
+          {activeTopicTitle ? `Search in ${activeTopicTitle}` : 'What would you like to master?'}
         </h2>
         <p style={{ margin: 0, color: 'var(--text-secondary)', fontSize: '13px' }}>
-          Type any concept, academic discipline, or research inquiry to synthesize an interconnected knowledge network.
+          {activeTopicTitle
+            ? 'Type to deep search concepts, notes, inquiries & quizzes, or generate a new topic graph.'
+            : 'Type any concept, academic discipline, or research inquiry to synthesize an interconnected knowledge network.'}
         </p>
       </div>
 
       {/* Search Input Form */}
-      <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+      <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
         <div
           style={{
             display: 'flex',
@@ -129,15 +211,31 @@ export const SpotlightSearch: React.FC<SpotlightSearchProps> = ({
             transition: 'border-color 150ms ease',
           }}
         >
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" strokeWidth="2" style={{ marginRight: '10px' }}>
-            <circle cx="11" cy="11" r="8" />
-            <line x1="21" y1="21" x2="16.65" y2="16.65" />
-          </svg>
+          {isSearching ? (
+            <div
+              style={{
+                width: '16px',
+                height: '16px',
+                border: '2px solid var(--accent-purple)',
+                borderTopColor: 'transparent',
+                borderRadius: '50%',
+                animation: 'spin 1s linear infinite',
+                marginRight: '10px',
+              }}
+            />
+          ) : (
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" strokeWidth="2" style={{ marginRight: '10px' }}>
+              <circle cx="11" cy="11" r="8" />
+              <line x1="21" y1="21" x2="16.65" y2="16.65" />
+            </svg>
+          )}
+
           <input
             type="text"
             value={topic}
             onChange={(e) => setTopic(e.target.value)}
-            placeholder="e.g. Quantum Electrodynamics, Raft Consensus, Epigenetics..."
+            onKeyDown={handleKeyDown}
+            placeholder={activeTopicTitle ? `Search ${activeTopicTitle} or enter new topic...` : "e.g. Quantum Electrodynamics, Raft Consensus..."}
             disabled={isLoading}
             autoFocus
             style={{
@@ -151,6 +249,7 @@ export const SpotlightSearch: React.FC<SpotlightSearchProps> = ({
               outline: 'none',
             }}
           />
+
           {topic && !isLoading && (
             <button
               type="button"
@@ -164,6 +263,7 @@ export const SpotlightSearch: React.FC<SpotlightSearchProps> = ({
               </svg>
             </button>
           )}
+
           <button
             type="submit"
             disabled={!topic.trim() || isLoading}
@@ -173,6 +273,207 @@ export const SpotlightSearch: React.FC<SpotlightSearchProps> = ({
             {isLoading ? 'Generating...' : 'Learn Topic'}
           </button>
         </div>
+
+        {/* Categorized Deep Search Hits */}
+        {deepHits.length > 0 && (
+          <div
+            style={{
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '12px',
+              backgroundColor: 'var(--bg-card)',
+              border: '1px solid var(--border-subtle)',
+              borderRadius: '6px',
+              padding: '12px',
+              maxHeight: '280px',
+              overflowY: 'auto',
+            }}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--border-subtle)', paddingBottom: '6px' }}>
+              <span style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                Deep Search Hits ({deepHits.length})
+              </span>
+              <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
+                Press Enter or click to navigate
+              </span>
+            </div>
+
+            {/* 1. Concepts & Tags */}
+            {conceptHits.length > 0 && (
+              <div>
+                <div style={{ fontSize: '11px', fontWeight: 600, color: 'var(--tag-concept-text)', margin: '4px 0 6px 0', textTransform: 'uppercase' }}>
+                  Concepts & Tags ({conceptHits.length})
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                  {conceptHits.map((h) => {
+                    const globalIdx = deepHits.indexOf(h);
+                    const isSelected = globalIdx === selectedHitIndex;
+                    return (
+                      <div
+                        key={`${h.node_id}-${h.snippet}`}
+                        onClick={() => handleHitClick(h)}
+                        style={{
+                          padding: '6px 10px',
+                          borderRadius: '4px',
+                          backgroundColor: isSelected ? 'rgba(139, 123, 245, 0.2)' : 'rgba(255, 255, 255, 0.02)',
+                          cursor: 'pointer',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          gap: '8px',
+                        }}
+                      >
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
+                          <span style={{ color: 'var(--accent-purple)', fontSize: '12px' }}>◈</span>
+                          <span style={{ fontSize: '13px', fontWeight: 500, color: 'var(--text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                            {h.node_title}
+                          </span>
+                          {h.snippet && h.snippet !== h.node_title && (
+                            <span style={{ fontSize: '11.5px', color: 'var(--text-muted)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                              — {h.snippet}
+                            </span>
+                          )}
+                        </div>
+                        <span style={{ fontSize: '10.5px', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)', flexShrink: 0 }}>
+                          → Note
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* 2. Note Content */}
+            {contentHits.length > 0 && (
+              <div>
+                <div style={{ fontSize: '11px', fontWeight: 600, color: '#93c5fd', margin: '4px 0 6px 0', textTransform: 'uppercase' }}>
+                  Note Content ({contentHits.length})
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                  {contentHits.map((h) => {
+                    const globalIdx = deepHits.indexOf(h);
+                    const isSelected = globalIdx === selectedHitIndex;
+                    return (
+                      <div
+                        key={`${h.node_id}-${h.snippet}`}
+                        onClick={() => handleHitClick(h)}
+                        style={{
+                          padding: '6px 10px',
+                          borderRadius: '4px',
+                          backgroundColor: isSelected ? 'rgba(139, 123, 245, 0.2)' : 'rgba(255, 255, 255, 0.02)',
+                          cursor: 'pointer',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          gap: '8px',
+                        }}
+                      >
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', minWidth: 0 }}>
+                          <span style={{ fontSize: '12.5px', fontWeight: 500, color: 'var(--text-primary)' }}>
+                            {h.node_title}
+                          </span>
+                          <span style={{ fontSize: '11.5px', color: 'var(--text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            {h.snippet}
+                          </span>
+                        </div>
+                        <span style={{ fontSize: '10.5px', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)', flexShrink: 0 }}>
+                          → Study Note
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* 3. Socratic Inquiries */}
+            {inquiryHits.length > 0 && (
+              <div>
+                <div style={{ fontSize: '11px', fontWeight: 600, color: 'var(--tag-question-text)', margin: '4px 0 6px 0', textTransform: 'uppercase' }}>
+                  Socratic Inquiries ({inquiryHits.length})
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                  {inquiryHits.map((h) => {
+                    const globalIdx = deepHits.indexOf(h);
+                    const isSelected = globalIdx === selectedHitIndex;
+                    return (
+                      <div
+                        key={`${h.node_id}-${h.snippet}`}
+                        onClick={() => handleHitClick(h)}
+                        style={{
+                          padding: '6px 10px',
+                          borderRadius: '4px',
+                          backgroundColor: isSelected ? 'rgba(139, 123, 245, 0.2)' : 'rgba(255, 255, 255, 0.02)',
+                          cursor: 'pointer',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          gap: '8px',
+                        }}
+                      >
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', minWidth: 0 }}>
+                          <span style={{ fontSize: '12.5px', fontWeight: 500, color: 'var(--text-primary)' }}>
+                            {h.node_title}
+                          </span>
+                          <span style={{ fontSize: '11.5px', color: 'var(--tag-question-text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            {h.snippet}
+                          </span>
+                        </div>
+                        <span style={{ fontSize: '10.5px', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)', flexShrink: 0 }}>
+                          → Inquiries
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* 4. Quizzes */}
+            {quizHits.length > 0 && (
+              <div>
+                <div style={{ fontSize: '11px', fontWeight: 600, color: 'var(--tag-quiz-text)', margin: '4px 0 6px 0', textTransform: 'uppercase' }}>
+                  Quizzes ({quizHits.length})
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                  {quizHits.map((h) => {
+                    const globalIdx = deepHits.indexOf(h);
+                    const isSelected = globalIdx === selectedHitIndex;
+                    return (
+                      <div
+                        key={`${h.node_id}-${h.snippet}`}
+                        onClick={() => handleHitClick(h)}
+                        style={{
+                          padding: '6px 10px',
+                          borderRadius: '4px',
+                          backgroundColor: isSelected ? 'rgba(139, 123, 245, 0.2)' : 'rgba(255, 255, 255, 0.02)',
+                          cursor: 'pointer',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          gap: '8px',
+                        }}
+                      >
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', minWidth: 0 }}>
+                          <span style={{ fontSize: '12.5px', fontWeight: 500, color: 'var(--text-primary)' }}>
+                            {h.node_title}
+                          </span>
+                          <span style={{ fontSize: '11.5px', color: 'var(--tag-quiz-text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            {h.snippet}
+                          </span>
+                        </div>
+                        <span style={{ fontSize: '10.5px', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)', flexShrink: 0 }}>
+                          → Quiz
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Difficulty Slider */}
         <div
@@ -188,7 +489,7 @@ export const SpotlightSearch: React.FC<SpotlightSearchProps> = ({
         >
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <span style={{ fontSize: '12px', fontWeight: 500, color: 'var(--text-primary)' }}>
-              Difficulty
+              Generation Rigor & Difficulty
             </span>
             <span style={{ fontSize: '11px', fontFamily: 'var(--font-mono)', color: 'var(--accent-purple)' }}>
               {DIFFICULTY_DESCRIPTIONS[currentDifficulty].label.toUpperCase()}
@@ -247,7 +548,7 @@ export const SpotlightSearch: React.FC<SpotlightSearchProps> = ({
             }}
           />
           <style>{`@keyframes spin { 100% { transform: rotate(360deg); } }`}</style>
-          <span style={{ fontSize: '13px', color: '#c4bbf9', fontFamily: 'var(--font-mono)' }}>
+          <span style={{ fontSize: '13px', color: '#c4b5fd', fontFamily: 'var(--font-mono)' }}>
             {loadingStep}
           </span>
         </div>

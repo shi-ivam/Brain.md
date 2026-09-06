@@ -1,5 +1,5 @@
-import React from 'react';
-import { LayoutMode, NodeType } from '../../types';
+import React, { useState } from 'react';
+import { LayoutMode, NodeType, GraphNode } from '../../types';
 
 interface GraphControlsProps {
   layoutMode: LayoutMode;
@@ -11,6 +11,17 @@ interface GraphControlsProps {
   onSearchFilterChange: (val: string) => void;
   activeFilters: Set<NodeType>;
   onToggleFilter: (type: NodeType) => void;
+  // Features 14, 21, 16, 22
+  lensMode?: 'all' | '1-hop' | '2-hop';
+  onLensModeChange?: (mode: 'all' | '1-hop' | '2-hop') => void;
+  colorMode?: 'default' | 'heatmap';
+  onColorModeToggle?: () => void;
+  nodes?: GraphNode[];
+  onFindShortestPath?: (sourceId: string, targetId: string) => void;
+  onClearShortestPath?: () => void;
+  shortestPathActive?: boolean;
+  showMiniMap?: boolean;
+  onToggleMiniMap?: () => void;
 }
 
 const ALL_TYPES: { type: NodeType; label: string; color: string }[] = [
@@ -32,7 +43,30 @@ export const GraphControls: React.FC<GraphControlsProps> = ({
   onSearchFilterChange,
   activeFilters,
   onToggleFilter,
+  lensMode = 'all',
+  onLensModeChange,
+  colorMode = 'default',
+  onColorModeToggle,
+  nodes = [],
+  onFindShortestPath,
+  onClearShortestPath,
+  shortestPathActive = false,
+  showMiniMap = true,
+  onToggleMiniMap,
 }) => {
+  const [isPathFinderOpen, setIsPathFinderOpen] = useState(false);
+  const [sourceNodeId, setSourceNodeId] = useState('');
+  const [targetNodeId, setTargetNodeId] = useState('');
+
+  const sortedNodes = [...nodes].sort((a, b) => a.title.localeCompare(b.title));
+
+  const handleRunShortestPath = () => {
+    if (sourceNodeId && targetNodeId && onFindShortestPath) {
+      onFindShortestPath(sourceNodeId, targetNodeId);
+      setIsPathFinderOpen(false);
+    }
+  };
+
   return (
     <div
       style={{
@@ -51,7 +85,7 @@ export const GraphControls: React.FC<GraphControlsProps> = ({
         boxShadow: '0 4px 16px rgba(0, 0, 0, 0.3)',
       }}
     >
-      {/* Top bar: Layout toggle and Zoom */}
+      {/* Top bar: Layout toggle, Zoom, and Mini-map toggle */}
       <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
         {/* Layout Segmented Control */}
         <div
@@ -117,7 +151,211 @@ export const GraphControls: React.FC<GraphControlsProps> = ({
               <path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3" />
             </svg>
           </button>
+
+          {/* Mini-map toggle */}
+          {onToggleMiniMap && (
+            <button
+              onClick={onToggleMiniMap}
+              className="obsidian-btn-subtle"
+              title={showMiniMap ? 'Hide Mini-Map' : 'Show Mini-Map'}
+              style={{
+                padding: '4px',
+                color: showMiniMap ? '#38bdf8' : 'var(--text-muted)',
+                backgroundColor: showMiniMap ? 'rgba(56, 189, 248, 0.1)' : 'transparent',
+              }}
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <rect x="3" y="3" width="18" height="18" rx="2" />
+                <rect x="13" y="11" width="6" height="8" rx="1" />
+              </svg>
+            </button>
+          )}
         </div>
+      </div>
+
+      {/* Second bar: Subgraph Lens, Color Mode toggle, Shortest Path */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+        {/* Lens dropdown */}
+        {onLensModeChange && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+            <span style={{ fontSize: '10px', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>Lens:</span>
+            <select
+              value={lensMode}
+              onChange={(e) => onLensModeChange(e.target.value as 'all' | '1-hop' | '2-hop')}
+              style={{
+                fontSize: '11px',
+                fontFamily: 'var(--font-sans)',
+                backgroundColor: 'var(--bg-card)',
+                color: 'var(--text-primary)',
+                border: '1px solid var(--border-subtle)',
+                borderRadius: '4px',
+                padding: '2px 4px',
+                outline: 'none',
+                cursor: 'pointer',
+              }}
+              title="Subgraph Lens Filter"
+            >
+              <option value="all">Full Graph</option>
+              <option value="1-hop">1-Hop Neighbors</option>
+              <option value="2-hop">2-Hop Neighborhood</option>
+            </select>
+          </div>
+        )}
+
+        {/* Color Mode toggle */}
+        {onColorModeToggle && (
+          <button
+            onClick={onColorModeToggle}
+            className="obsidian-btn-subtle"
+            style={{
+              fontSize: '11px',
+              padding: '2px 6px',
+              borderRadius: '4px',
+              border: '1px solid var(--border-subtle)',
+              backgroundColor: colorMode === 'heatmap' ? 'rgba(239, 68, 68, 0.15)' : 'var(--bg-card)',
+              color: colorMode === 'heatmap' ? '#f87171' : 'var(--text-secondary)',
+            }}
+            title="Toggle between default node type colors and mastery gap heatmap"
+          >
+            {colorMode === 'heatmap' ? '🔥 Heatmap' : '🎨 Nodes'}
+          </button>
+        )}
+
+        {/* Shortest Path Tool Button */}
+        {onFindShortestPath && (
+          <div style={{ position: 'relative' }}>
+            <button
+              onClick={() => setIsPathFinderOpen((prev) => !prev)}
+              className="obsidian-btn-subtle"
+              style={{
+                fontSize: '11px',
+                padding: '2px 6px',
+                borderRadius: '4px',
+                border: `1px solid ${shortestPathActive ? '#f59e0b' : 'var(--border-subtle)'}`,
+                backgroundColor: shortestPathActive ? 'rgba(245, 158, 11, 0.15)' : 'var(--bg-card)',
+                color: shortestPathActive ? '#f59e0b' : 'var(--text-secondary)',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '4px',
+              }}
+              title="Find Shortest Connection Path between two concepts"
+            >
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <circle cx="6" cy="19" r="3" />
+                <path d="M9 19h8.5a4.5 4.5 0 0 0 0-9H5" />
+                <circle cx="18" cy="5" r="3" />
+              </svg>
+              <span>Path</span>
+            </button>
+
+            {/* Shortest Path Popover Modal */}
+            {isPathFinderOpen && (
+              <div
+                style={{
+                  position: 'absolute',
+                  top: '28px',
+                  right: 0,
+                  width: '240px',
+                  backgroundColor: 'var(--bg-panel)',
+                  border: '1px solid var(--border-subtle)',
+                  borderRadius: '6px',
+                  padding: '10px',
+                  boxShadow: '0 8px 24px rgba(0, 0, 0, 0.5)',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '8px',
+                  zIndex: 40,
+                }}
+              >
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span style={{ fontSize: '12px', fontWeight: 600, color: '#f59e0b' }}>Shortest Path Trail</span>
+                  <button
+                    onClick={() => setIsPathFinderOpen(false)}
+                    className="obsidian-btn-subtle"
+                    style={{ padding: '2px' }}
+                  >
+                    ✕
+                  </button>
+                </div>
+
+                <div>
+                  <label style={{ fontSize: '10px', color: 'var(--text-muted)', display: 'block', marginBottom: '2px' }}>
+                    Start Concept:
+                  </label>
+                  <select
+                    value={sourceNodeId}
+                    onChange={(e) => setSourceNodeId(e.target.value)}
+                    style={{
+                      width: '100%',
+                      fontSize: '11px',
+                      backgroundColor: 'var(--bg-card)',
+                      color: 'var(--text-primary)',
+                      border: '1px solid var(--border-subtle)',
+                      borderRadius: '4px',
+                      padding: '4px',
+                    }}
+                  >
+                    <option value="">Select origin node...</option>
+                    {sortedNodes.map((n) => (
+                      <option key={n.id} value={n.id}>
+                        {n.title}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label style={{ fontSize: '10px', color: 'var(--text-muted)', display: 'block', marginBottom: '2px' }}>
+                    Destination Concept:
+                  </label>
+                  <select
+                    value={targetNodeId}
+                    onChange={(e) => setTargetNodeId(e.target.value)}
+                    style={{
+                      width: '100%',
+                      fontSize: '11px',
+                      backgroundColor: 'var(--bg-card)',
+                      color: 'var(--text-primary)',
+                      border: '1px solid var(--border-subtle)',
+                      borderRadius: '4px',
+                      padding: '4px',
+                    }}
+                  >
+                    <option value="">Select target node...</option>
+                    {sortedNodes.map((n) => (
+                      <option key={n.id} value={n.id}>
+                        {n.title}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div style={{ display: 'flex', gap: '6px', marginTop: '4px' }}>
+                  <button
+                    onClick={handleRunShortestPath}
+                    disabled={!sourceNodeId || !targetNodeId || sourceNodeId === targetNodeId}
+                    className="obsidian-btn obsidian-btn-primary"
+                    style={{ flex: 1, fontSize: '11px', padding: '4px 0', justifyContent: 'center' }}
+                  >
+                    Trace Path
+                  </button>
+                  {shortestPathActive && onClearShortestPath && (
+                    <button
+                      onClick={() => {
+                        onClearShortestPath();
+                        setIsPathFinderOpen(false);
+                      }}
+                      className="obsidian-btn"
+                      style={{ fontSize: '11px', padding: '4px 8px' }}
+                    >
+                      Clear
+                    </button>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Node Search Bar */}
@@ -131,7 +369,15 @@ export const GraphControls: React.FC<GraphControlsProps> = ({
           padding: '2px 8px',
         }}
       >
-        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" strokeWidth="2" style={{ marginRight: '6px' }}>
+        <svg
+          width="12"
+          height="12"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="var(--text-muted)"
+          strokeWidth="2"
+          style={{ marginRight: '6px' }}
+        >
           <circle cx="11" cy="11" r="8" />
           <line x1="21" y1="21" x2="16.65" y2="16.65" />
         </svg>
@@ -193,3 +439,4 @@ export const GraphControls: React.FC<GraphControlsProps> = ({
     </div>
   );
 };
+

@@ -37,6 +37,7 @@ Thumbs.db
 *.swo
 
 # Testing & Coverage
+scratch/
 .pytest_cache/
 .coverage
 htmlcov/

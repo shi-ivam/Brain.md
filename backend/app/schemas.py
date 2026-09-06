@@ -18,6 +18,37 @@ class TopicResponse(BaseModel):
     node_count: Optional[int] = 0
     edge_count: Optional[int] = 0
 
+class NodeResponse(BaseModel):
+    id: str
+    topic_id: str
+    title: str
+    node_type: str
+    summary: Optional[str] = ""
+    content: Optional[str] = ""
+    parent_node_id: Optional[str] = None
+    difficulty: Optional[str] = "intermediate"
+    pos_x: Optional[float] = None
+    pos_y: Optional[float] = None
+    created_at: str
+    updated_at: str
+    mastery_score: Optional[int] = 0
+    review_interval: Optional[int] = 1
+    ease_factor: Optional[float] = 2.5
+    review_due: Optional[str] = None
+    review_count: Optional[int] = 0
+    portal_topic_id: Optional[str] = None
+    metadata: Optional[Dict[str, Any]] = None
+
+class EdgeResponse(BaseModel):
+    id: str
+    topic_id: str
+    source_id: str
+    target_id: str
+    relation_type: Optional[str] = "related_to"
+    edge_type: Optional[str] = "relates_to"
+    label: Optional[str] = ""
+    created_at: str
+
 class NodeCreate(BaseModel):
     topic_id: str
     title: str
@@ -28,6 +59,7 @@ class NodeCreate(BaseModel):
     difficulty: Optional[str] = "intermediate"
     pos_x: Optional[float] = None
     pos_y: Optional[float] = None
+    portal_topic_id: Optional[str] = None
 
 class NodeUpdate(BaseModel):
     title: Optional[str] = None
@@ -35,13 +67,75 @@ class NodeUpdate(BaseModel):
     content: Optional[str] = None
     pos_x: Optional[float] = None
     pos_y: Optional[float] = None
+    portal_topic_id: Optional[str] = None
+    difficulty: Optional[str] = None
 
 class EdgeCreate(BaseModel):
     topic_id: str
     source_id: str
     target_id: str
-    relation_type: str # 'prerequisite_for', 'subtopic_of', 'affects', 'decomposes_into', 'question_for', 'note_on', 'quiz_for', 'related_to'
+    relation_type: Optional[str] = "related_to"
+    edge_type: Optional[str] = "relates_to"
+    label: Optional[str] = ""
+
+class EdgeUpdateRequest(BaseModel):
+    edge_type: Optional[str] = None
     label: Optional[str] = None
+    relation_type: Optional[str] = None
+
+class ReviewRequest(BaseModel):
+    rating: int = Field(..., ge=1, le=4, description="SM-2 rating: 1 (Again), 2 (Hard), 3 (Good), 4 (Easy)")
+
+class ReviewResponse(BaseModel):
+    node_id: str
+    mastery_score: int
+    review_interval: int
+    ease_factor: float
+    review_due: str
+    review_count: int
+    repetitions: Optional[int] = 0
+    message: Optional[str] = None
+    topic_id: Optional[str] = None
+
+class ShortestPathResponse(BaseModel):
+    found: bool
+    path_length: int
+    node_ids: List[str]
+    edge_ids: List[str]
+    nodes: Optional[List[Dict[str, Any]]] = []
+    edges: Optional[List[Dict[str, Any]]] = []
+
+class UnlinkedMention(BaseModel):
+    node_id: str
+    title: str
+    snippet: str
+    context: Optional[str] = None
+    node_type: Optional[str] = None
+    summary: Optional[str] = None
+
+class DeepSearchResult(BaseModel):
+    node_id: str
+    title: str
+    hit_type: str # 'title', 'content', 'inquiry', 'quiz', 'tag'
+    snippet: str
+    score: Optional[float] = 1.0
+
+class TopicImportRequest(BaseModel):
+    topic: Optional[Dict[str, Any]] = None
+    nodes: Optional[List[Dict[str, Any]]] = []
+    edges: Optional[List[Dict[str, Any]]] = []
+    quizzes: Optional[List[Dict[str, Any]]] = []
+    inquiries: Optional[List[Dict[str, Any]]] = []
+    version: Optional[str] = None
+    exported_at: Optional[str] = None
+
+class LinkTopicRequest(BaseModel):
+    portal_topic_id: Optional[str] = None
+
+class SyncWikilinksResponse(BaseModel):
+    topic_id: str
+    added_edges_count: int
+    message: str
 
 class NodeExpandRequest(BaseModel):
     expansion_type: Optional[str] = "subtopics" # 'subtopics', 'topics_affecting_question', 'tested_concepts', 'subquestions'

@@ -5,7 +5,7 @@ import json
 import uuid
 import logging
 from typing import Optional, List, Dict, Any
-from fastapi import FastAPI, HTTPException, Response, Query
+from fastapi import FastAPI, HTTPException, Response, Query, Body
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 
@@ -21,22 +21,45 @@ from .database import (
     get_connection,
     list_topics,
     get_topic,
+    get_node,
+    get_edge,
     get_full_graph,
     delete_topic,
     now_iso,
+    sync_topic_wikilinks,
+    find_unlinked_mentions,
+    calculate_shortest_path,
+    record_spaced_repetition_review,
+    get_due_reviews,
+    deep_search_topic,
+    export_topic_as_json,
+    import_topic_from_json,
+    update_edge,
+    update_node_portal,
 )
 from .schemas import (
     TopicGenerateRequest,
     TopicResponse,
+    NodeResponse,
+    EdgeResponse,
     NodeCreate,
     NodeUpdate,
     EdgeCreate,
+    EdgeUpdateRequest,
     NodeExpandRequest,
     QuestionAskRequest,
     QuizGenerateRequest,
     QuizAnswerSubmit,
     NoteSaveRequest,
     NodePositionUpdate,
+    ReviewRequest,
+    ReviewResponse,
+    ShortestPathResponse,
+    UnlinkedMention,
+    DeepSearchResult,
+    TopicImportRequest,
+    LinkTopicRequest,
+    SyncWikilinksResponse,
 )
 from . import ai_service
 
@@ -682,10 +705,14 @@ def create_custom_node(req: NodeCreate):
     cursor = conn.cursor()
     node_id = str(uuid.uuid4())
     now = now_iso()
+    portal_id = getattr(req, "portal_topic_id", None)
     with conn:
         cursor.execute(
-            """INSERT INTO nodes (id, topic_id, parent_node_id, title, node_type, summary, content, difficulty, metadata_json, pos_x, pos_y, created_at, updated_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            """INSERT INTO nodes (
+                id, topic_id, parent_node_id, title, node_type, summary, content, difficulty,
+                metadata_json, pos_x, pos_y, created_at, updated_at, mastery_score,
+                review_interval, ease_factor, review_due, review_count, portal_topic_id
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 1, 2.5, ?, 0, ?)""",
             (
                 node_id,
                 req.topic_id,
@@ -699,7 +726,9 @@ def create_custom_node(req: NodeCreate):
                 req.pos_x or 400,
                 req.pos_y or 300,
                 now,
-                now
+                now,
+                now,
+                portal_id
             )
         )
     conn.close()
@@ -711,14 +740,17 @@ def create_custom_edge(req: EdgeCreate):
     cursor = conn.cursor()
     edge_id = str(uuid.uuid4())
     now = now_iso()
+    rel_type = req.relation_type or req.edge_type or "related_to"
+    edge_type = req.edge_type or rel_type
+    label = req.label or ""
     with conn:
         cursor.execute(
-            """INSERT INTO edges (id, topic_id, source_id, target_id, relation_type, label, created_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?)""",
-            (edge_id, req.topic_id, req.source_id, req.target_id, req.relation_type, req.label, now)
+            """INSERT INTO edges (id, topic_id, source_id, target_id, relation_type, edge_type, label, created_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+            (edge_id, req.topic_id, req.source_id, req.target_id, rel_type, edge_type, label, now)
         )
     conn.close()
-    return {"id": edge_id, "source_id": req.source_id, "target_id": req.target_id}
+    return {"id": edge_id, "source_id": req.source_id, "target_id": req.target_id, "relation_type": rel_type, "edge_type": edge_type, "label": label}
 
 @app.get("/api/topics/{topic_id}/export/obsidian")
 def export_obsidian_vault(topic_id: str):
@@ -810,3 +842,143 @@ tags: [knowledge-graph, {n['node_type']}]
         media_type="application/zip",
         headers={"Content-Disposition": f"attachment; filename={filename}"}
     )
+
+# Deeply Linked Graph & Knowledge Features
+
+@app.post("/api/topics/{topic_id}/sync-wikilinks", response_model=SyncWikilinksResponse)
+def sync_wikilinks_endpoint(topic_id: str):
+    topic = get_topic(topic_id)
+    if not topic:
+        raise HTTPException(status_code=404, detail="Topic not found")
+    count = sync_topic_wikilinks(topic_id)
+    return {
+        "topic_id": topic_id,
+        "added_edges_count": count,
+        "message": f"Successfully synced {count} wikilink edges"
+    }
+
+@app.get("/api/nodes/{node_id}/mentions", response_model=List[UnlinkedMention])
+def get_node_mentions(node_id: str):
+    node = get_node(node_id)
+    if not node:
+        raise HTTPException(status_code=404, detail="Node not found")
+    mentions = find_unlinked_mentions(node["topic_id"], node_id)
+    return mentions
+
+@app.get("/api/topics/{topic_id}/path", response_model=ShortestPathResponse)
+def get_shortest_path_endpoint(
+    topic_id: str,
+    source_node: Optional[str] = Query(default=None),
+    target_node: Optional[str] = Query(default=None),
+    source_node_id: Optional[str] = Query(default=None),
+    target_node_id: Optional[str] = Query(default=None),
+):
+    topic = get_topic(topic_id)
+    if not topic:
+        raise HTTPException(status_code=404, detail="Topic not found")
+    src = source_node or source_node_id
+    tgt = target_node or target_node_id
+    if not src or not tgt:
+        raise HTTPException(status_code=400, detail="Both source_node and target_node query parameters are required")
+    src_node = get_node(src)
+    tgt_node = get_node(tgt)
+    if not src_node or src_node["topic_id"] != topic_id:
+        raise HTTPException(status_code=404, detail="Source node not found in topic")
+    if not tgt_node or tgt_node["topic_id"] != topic_id:
+        raise HTTPException(status_code=404, detail="Target node not found in topic")
+    return calculate_shortest_path(topic_id, src, tgt)
+
+@app.post("/api/nodes/{node_id}/review", response_model=ReviewResponse)
+def review_node_endpoint(node_id: str, req: ReviewRequest):
+    node = get_node(node_id)
+    if not node:
+        raise HTTPException(status_code=404, detail="Node not found")
+    try:
+        updated = record_spaced_repetition_review(node_id, req.rating)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    if not updated:
+        raise HTTPException(status_code=404, detail="Node not found")
+    return {
+        "node_id": node_id,
+        "topic_id": node["topic_id"],
+        "mastery_score": updated["mastery_score"],
+        "review_interval": updated["review_interval"],
+        "ease_factor": updated["ease_factor"],
+        "review_due": updated["review_due"],
+        "review_count": updated["review_count"],
+        "repetitions": updated.get("metadata", {}).get("repetitions", 0),
+        "message": f"Recorded SM-2 review (rating {req.rating}). Next review due in {updated['review_interval']} day(s)."
+    }
+
+@app.get("/api/topics/{topic_id}/review-queue", response_model=List[NodeResponse])
+def get_review_queue_endpoint(topic_id: str):
+    topic = get_topic(topic_id)
+    if not topic:
+        raise HTTPException(status_code=404, detail="Topic not found")
+    due_nodes = get_due_reviews(topic_id)
+    return due_nodes
+
+@app.post("/api/nodes/{node_id}/link-topic")
+def link_node_topic_endpoint(
+    node_id: str,
+    req: Optional[LinkTopicRequest] = None,
+    portal_topic_id: Optional[str] = Query(default=None)
+):
+    node = get_node(node_id)
+    if not node:
+        raise HTTPException(status_code=404, detail="Node not found")
+    target_portal_id = req.portal_topic_id if (req and req.portal_topic_id is not None) else portal_topic_id
+    if target_portal_id:
+        target_topic = get_topic(target_portal_id)
+        if not target_topic:
+            raise HTTPException(status_code=404, detail="Target portal topic not found")
+    updated = update_node_portal(node_id, target_portal_id)
+    return {
+        "success": True,
+        "node_id": node_id,
+        "portal_topic_id": target_portal_id,
+        "node": updated
+    }
+
+@app.get("/api/topics/{topic_id}/search", response_model=List[DeepSearchResult])
+def search_topic_endpoint(topic_id: str, q: str = Query(..., min_length=1)):
+    topic = get_topic(topic_id)
+    if not topic:
+        raise HTTPException(status_code=404, detail="Topic not found")
+    results = deep_search_topic(topic_id, q)
+    return results
+
+@app.get("/api/topics/{topic_id}/export/json")
+def export_topic_json_endpoint(topic_id: str):
+    exported = export_topic_as_json(topic_id)
+    if not exported:
+        raise HTTPException(status_code=404, detail="Topic not found")
+    return exported
+
+@app.post("/api/topics/import/json")
+def import_topic_json_endpoint(data: Dict[str, Any] = Body(...)):
+    if not data or not isinstance(data, dict):
+        raise HTTPException(status_code=400, detail="Invalid JSON payload for import")
+    new_topic_id = import_topic_from_json(data)
+    return {
+        "success": True,
+        "topic_id": new_topic_id,
+        "full_graph": get_full_graph(new_topic_id)
+    }
+
+@app.put("/api/edges/{edge_id}", response_model=EdgeResponse)
+def update_edge_endpoint(edge_id: str, req: EdgeUpdateRequest):
+    edge = get_edge(edge_id)
+    if not edge:
+        raise HTTPException(status_code=404, detail="Edge not found")
+    updated = update_edge(
+        edge_id=edge_id,
+        edge_type=req.edge_type,
+        label=req.label,
+        relation_type=req.relation_type
+    )
+    if not updated:
+        raise HTTPException(status_code=404, detail="Edge not found")
+    return updated
+
