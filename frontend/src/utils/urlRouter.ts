@@ -31,7 +31,7 @@ export function parseUrlHash(): DeepLinkState {
   if (queryPart) {
     const params = new URLSearchParams(queryPart);
     const tab = params.get('tab');
-    if (tab === 'notes' || tab === 'questions' || tab === 'quiz' || tab === 'connections') {
+    if (tab === 'notes' || tab === 'visualizations' || tab === 'questions' || tab === 'quiz' || tab === 'connections' || tab === 'resources') {
       state.tab = tab;
     }
     const section = params.get('section');

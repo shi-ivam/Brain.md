@@ -1,10 +1,13 @@
 import React, { useState, useEffect } from 'react';
-import { GraphNode, GraphEdge, Quiz, Inquiry, DifficultyLevel, KnowledgeGraphData, NodeType } from '../../types';
+import { GraphNode, GraphEdge, Quiz, Inquiry, DifficultyLevel, KnowledgeGraphData, NodeType, NodeResource, NodeVisualization, InspectorTab } from '../../types';
 import { NoteTab } from './NoteTab';
 import { QuestionTab } from './QuestionTab';
 import { QuizTab } from './QuizTab';
 import { ConnectionsTab } from './ConnectionsTab';
+import { ResourcesTab } from './ResourcesTab';
+import { VisualizationsTab } from './VisualizationsTab';
 import { TextSelectionContextMenu } from './TextSelectionContextMenu';
+import { SlideViewerModal } from '../Slides/SlideViewerModal';
 import { MathText } from '../MathText';
 import { createNode, createEdge, fetchTopicGraph, saveNodeNote } from '../../services/api';
 
@@ -14,8 +17,10 @@ interface RightInspectorProps {
   edges: GraphEdge[];
   quizzes: Quiz[];
   inquiries: Inquiry[];
+  resources?: NodeResource[];
+  visualizations?: NodeVisualization[];
   difficulty: DifficultyLevel;
-  initialTab?: 'notes' | 'questions' | 'quiz' | 'connections';
+  initialTab?: InspectorTab;
   targetSection?: string;
   onClose: () => void;
   onNodeUpdated: (nodeId: string, newContent: string) => void;
@@ -27,8 +32,13 @@ interface RightInspectorProps {
   onDeleteNode?: (nodeId: string) => Promise<void>;
   onDetachQuiz?: (quizId: string) => Promise<void>;
   onGraphUpdated?: (fullGraph: KnowledgeGraphData) => void;
-  onTabChange?: (tab: 'notes' | 'questions' | 'quiz' | 'connections') => void;
+  onTabChange?: (tab: InspectorTab) => void;
   onToggleDone?: (node: GraphNode) => void;
+  onResourceAdded?: (resource: NodeResource) => void;
+  onResourceDeleted?: (resourceId: string) => void;
+  onVisualizationAdded?: (vis: NodeVisualization) => void;
+  onVisualizationUpdated?: (vis: NodeVisualization) => void;
+  onVisualizationDeleted?: (visId: string) => void;
 }
 
 export const RightInspector: React.FC<RightInspectorProps> = ({
@@ -37,6 +47,8 @@ export const RightInspector: React.FC<RightInspectorProps> = ({
   edges,
   quizzes,
   inquiries,
+  resources = [],
+  visualizations = [],
   difficulty,
   initialTab = 'notes',
   targetSection,
@@ -52,8 +64,13 @@ export const RightInspector: React.FC<RightInspectorProps> = ({
   onGraphUpdated,
   onTabChange,
   onToggleDone,
+  onResourceAdded,
+  onResourceDeleted,
+  onVisualizationAdded,
+  onVisualizationUpdated,
+  onVisualizationDeleted,
 }) => {
-  const [activeTab, setActiveTab] = useState<'notes' | 'questions' | 'quiz' | 'connections'>(initialTab);
+  const [activeTab, setActiveTab] = useState<InspectorTab>(initialTab);
   const [selectionMenu, setSelectionMenu] = useState<{
     selectedText: string;
     position: { x: number; y: number };
@@ -61,8 +78,9 @@ export const RightInspector: React.FC<RightInspectorProps> = ({
     textareaElement?: HTMLTextAreaElement | null;
   } | null>(null);
   const [createToast, setCreateToast] = useState<string | null>(null);
+  const [isHeaderSlidesOpen, setIsHeaderSlidesOpen] = useState<boolean>(false);
 
-  const handleTabClick = (tab: 'notes' | 'questions' | 'quiz' | 'connections') => {
+  const handleTabClick = (tab: InspectorTab) => {
     setActiveTab(tab);
     if (onTabChange) onTabChange(tab);
   };
@@ -211,11 +229,39 @@ export const RightInspector: React.FC<RightInspectorProps> = ({
     return false;
   });
   const nodeInquiries = inquiries.filter((q) => q.node_id === node.id);
+  const nodeResources = (resources || []).filter((r) => r.node_id === node.id);
+  const nodeVisualizations = (visualizations || []).filter((v) => v.node_id === node.id);
+
+  const handleInsertResourceIntoNote = async (snippet: string) => {
+    const current = node.content || node.summary || '';
+    const updated = current ? `${current}\n\n${snippet.trim()}\n` : `${snippet.trim()}\n`;
+    onNodeUpdated(node.id, updated);
+    try {
+      await saveNodeNote(node.id, updated);
+      setCreateToast('Inserted resource into Study Note');
+      setTimeout(() => setCreateToast(null), 2500);
+    } catch (err) {
+      console.error('Failed to auto-save note with resource:', err);
+    }
+  };
+
+  const handleInsertVisualizationIntoNote = async (snippet: string) => {
+    const current = node.content || node.summary || '';
+    const updated = current ? `${current}\n\n${snippet.trim()}\n` : `${snippet.trim()}\n`;
+    onNodeUpdated(node.id, updated);
+    try {
+      await saveNodeNote(node.id, updated);
+      setCreateToast('Inserted diagram into Study Note');
+      setTimeout(() => setCreateToast(null), 2500);
+    } catch (err) {
+      console.error('Failed to auto-save note with visualization:', err);
+    }
+  };
 
   return (
     <aside
       style={{
-        width: '640px',
+        width: '680px',
         maxWidth: '92vw',
         backgroundColor: 'var(--bg-panel)',
         borderLeft: '1px solid var(--border-subtle)',
@@ -244,7 +290,7 @@ export const RightInspector: React.FC<RightInspectorProps> = ({
               {node.node_type}
             </span>
             {node.difficulty && (
-              <span style={{ fontSize: '11px', fontFamily: 'var(--font-mono)', color: 'var(--text-muted)' }}>
+              <span style={{ fontSize: '12px', fontFamily: 'var(--font-mono)', color: 'var(--text-muted)' }}>
                 {node.difficulty.toUpperCase()}
               </span>
             )}
@@ -256,12 +302,12 @@ export const RightInspector: React.FC<RightInspectorProps> = ({
                   alignItems: 'center',
                   gap: '4px',
                   cursor: 'pointer',
-                  padding: '2px 8px',
+                  padding: '3px 9px',
                   borderRadius: '12px',
                   border: node.is_done ? '1px solid #10b981' : '1px solid var(--border-subtle)',
                   backgroundColor: node.is_done ? 'rgba(16, 185, 129, 0.15)' : 'transparent',
                   color: node.is_done ? '#10b981' : 'var(--text-secondary)',
-                  fontSize: '11px',
+                  fontSize: '12px',
                   fontWeight: 500,
                   transition: 'all 0.15s ease',
                 }}
@@ -274,12 +320,36 @@ export const RightInspector: React.FC<RightInspectorProps> = ({
               </button>
             )}
           </div>
-          <h2 style={{ fontSize: '17px', margin: 0, fontWeight: 600, wordBreak: 'break-word', lineHeight: 1.35 }}>
+          <h2 style={{ fontSize: '20px', margin: 0, fontWeight: 600, wordBreak: 'break-word', lineHeight: 1.35 }}>
             <MathText text={node.title} />
           </h2>
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+          <button
+            onClick={() => handleTabClick('visualizations')}
+            className="obsidian-btn-subtle"
+            title="Visualizations (Diagrams & Mindmaps)"
+            style={{ padding: '4px', color: '#818cf8' }}
+          >
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <polygon points="12 2 2 7 12 12 22 7 12 2" />
+              <polyline points="2 17 12 22 22 17" />
+              <polyline points="2 12 12 17 22 12" />
+            </svg>
+          </button>
+          <button
+            onClick={() => setIsHeaderSlidesOpen(true)}
+            className="obsidian-btn-subtle"
+            title="Study Slides (View / Download)"
+            style={{ padding: '4px', color: '#38bdf8' }}
+          >
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <rect x="2" y="3" width="20" height="14" rx="2" />
+              <line x1="8" y1="21" x2="16" y2="21" />
+              <line x1="12" y1="17" x2="12" y2="21" />
+            </svg>
+          </button>
           {onDeleteNode && (
             <button
               onClick={() => {
@@ -318,12 +388,12 @@ export const RightInspector: React.FC<RightInspectorProps> = ({
           onClick={() => handleTabClick('notes')}
           style={{
             flex: 1,
-            padding: '11px 0',
+            padding: '12px 0',
             border: 'none',
             borderBottom: activeTab === 'notes' ? '2px solid var(--accent-purple)' : '2px solid transparent',
             backgroundColor: activeTab === 'notes' ? 'var(--bg-panel)' : 'transparent',
             color: activeTab === 'notes' ? 'var(--text-primary)' : 'var(--text-muted)',
-            fontSize: '13px',
+            fontSize: '14px',
             fontFamily: 'var(--font-sans)',
             fontWeight: activeTab === 'notes' ? 500 : 400,
             cursor: 'pointer',
@@ -333,15 +403,33 @@ export const RightInspector: React.FC<RightInspectorProps> = ({
         </button>
 
         <button
+          onClick={() => handleTabClick('visualizations')}
+          style={{
+            flex: 1,
+            padding: '12px 0',
+            border: 'none',
+            borderBottom: activeTab === 'visualizations' ? '2px solid var(--accent-cyan, #38bdf8)' : '2px solid transparent',
+            backgroundColor: activeTab === 'visualizations' ? 'var(--bg-panel)' : 'transparent',
+            color: activeTab === 'visualizations' ? 'var(--text-primary)' : 'var(--text-muted)',
+            fontSize: '14px',
+            fontFamily: 'var(--font-sans)',
+            fontWeight: activeTab === 'visualizations' ? 500 : 400,
+            cursor: 'pointer',
+          }}
+        >
+          Visuals {nodeVisualizations.length > 0 && `(${nodeVisualizations.length})`}
+        </button>
+
+        <button
           onClick={() => handleTabClick('questions')}
           style={{
             flex: 1,
-            padding: '11px 0',
+            padding: '12px 0',
             border: 'none',
             borderBottom: activeTab === 'questions' ? '2px solid var(--tag-question-text)' : '2px solid transparent',
             backgroundColor: activeTab === 'questions' ? 'var(--bg-panel)' : 'transparent',
             color: activeTab === 'questions' ? 'var(--text-primary)' : 'var(--text-muted)',
-            fontSize: '13px',
+            fontSize: '14px',
             fontFamily: 'var(--font-sans)',
             fontWeight: activeTab === 'questions' ? 500 : 400,
             cursor: 'pointer',
@@ -354,12 +442,12 @@ export const RightInspector: React.FC<RightInspectorProps> = ({
           onClick={() => handleTabClick('quiz')}
           style={{
             flex: 1,
-            padding: '11px 0',
+            padding: '12px 0',
             border: 'none',
             borderBottom: activeTab === 'quiz' ? '2px solid var(--tag-quiz-text)' : '2px solid transparent',
             backgroundColor: activeTab === 'quiz' ? 'var(--bg-panel)' : 'transparent',
             color: activeTab === 'quiz' ? 'var(--text-primary)' : 'var(--text-muted)',
-            fontSize: '13px',
+            fontSize: '14px',
             fontFamily: 'var(--font-sans)',
             fontWeight: activeTab === 'quiz' ? 500 : 400,
             cursor: 'pointer',
@@ -372,12 +460,12 @@ export const RightInspector: React.FC<RightInspectorProps> = ({
           onClick={() => handleTabClick('connections')}
           style={{
             flex: 1,
-            padding: '11px 0',
+            padding: '12px 0',
             border: 'none',
             borderBottom: activeTab === 'connections' ? '2px solid var(--text-secondary)' : '2px solid transparent',
             backgroundColor: activeTab === 'connections' ? 'var(--bg-panel)' : 'transparent',
             color: activeTab === 'connections' ? 'var(--text-primary)' : 'var(--text-muted)',
-            fontSize: '13px',
+            fontSize: '14px',
             fontFamily: 'var(--font-sans)',
             fontWeight: activeTab === 'connections' ? 500 : 400,
             cursor: 'pointer',
@@ -385,12 +473,30 @@ export const RightInspector: React.FC<RightInspectorProps> = ({
         >
           Links
         </button>
+
+        <button
+          onClick={() => handleTabClick('resources')}
+          style={{
+            flex: 1,
+            padding: '12px 0',
+            border: 'none',
+            borderBottom: activeTab === 'resources' ? '2px solid #ef4444' : '2px solid transparent',
+            backgroundColor: activeTab === 'resources' ? 'var(--bg-panel)' : 'transparent',
+            color: activeTab === 'resources' ? 'var(--text-primary)' : 'var(--text-muted)',
+            fontSize: '14px',
+            fontFamily: 'var(--font-sans)',
+            fontWeight: activeTab === 'resources' ? 500 : 400,
+            cursor: 'pointer',
+          }}
+        >
+          Resources {nodeResources.length > 0 && `(${nodeResources.length})`}
+        </button>
       </div>
 
       {/* Tab Content Body */}
       <div
         onContextMenu={handleInspectorContextMenu}
-        style={{ flex: 1, padding: '18px 22px', overflowY: 'hidden', display: 'flex', flexDirection: 'column', position: 'relative' }}
+        style={{ flex: 1, padding: '18px 22px', overflowY: 'hidden', display: 'flex', flexDirection: 'column', position: 'relative', minHeight: 0 }}
       >
         {activeTab === 'notes' && (
           <NoteTab
@@ -398,10 +504,30 @@ export const RightInspector: React.FC<RightInspectorProps> = ({
             nodes={nodes}
             difficulty={difficulty}
             targetSection={targetSection}
+            resources={nodeResources}
+            onOpenResourcesTab={() => handleTabClick('resources')}
             onNodeUpdated={onNodeUpdated}
             onDecomposeQuestion={onDecomposeQuestion}
             onSelectNode={onSelectNode}
             onGraphUpdated={onGraphUpdated}
+          />
+        )}
+
+        {activeTab === 'visualizations' && (
+          <VisualizationsTab
+            node={node}
+            visualizations={nodeVisualizations}
+            difficulty={difficulty}
+            onVisualizationAdded={(vis) => {
+              if (onVisualizationAdded) onVisualizationAdded(vis);
+            }}
+            onVisualizationUpdated={(vis) => {
+              if (onVisualizationUpdated) onVisualizationUpdated(vis);
+            }}
+            onVisualizationDeleted={(visId) => {
+              if (onVisualizationDeleted) onVisualizationDeleted(visId);
+            }}
+            onInsertIntoNote={handleInsertVisualizationIntoNote}
           />
         )}
 
@@ -437,6 +563,21 @@ export const RightInspector: React.FC<RightInspectorProps> = ({
             onGraphUpdated={onGraphUpdated}
           />
         )}
+
+        {activeTab === 'resources' && (
+          <ResourcesTab
+            node={node}
+            resources={nodeResources}
+            difficulty={difficulty}
+            onResourceAdded={(newRes) => {
+              if (onResourceAdded) onResourceAdded(newRes);
+            }}
+            onResourceDeleted={(resId) => {
+              if (onResourceDeleted) onResourceDeleted(resId);
+            }}
+            onInsertIntoNote={handleInsertResourceIntoNote}
+          />
+        )}
       </div>
 
       {/* Context Menu on Text Selection */}
@@ -461,9 +602,9 @@ export const RightInspector: React.FC<RightInspectorProps> = ({
             backgroundColor: '#064e3b',
             border: '1px solid #10b981',
             color: '#a7f3d0',
-            padding: '7px 14px',
+            padding: '8px 16px',
             borderRadius: '6px',
-            fontSize: '12px',
+            fontSize: '13.5px',
             fontFamily: 'var(--font-sans)',
             boxShadow: '0 4px 18px rgba(0, 0, 0, 0.5)',
             zIndex: 1100,
@@ -476,6 +617,14 @@ export const RightInspector: React.FC<RightInspectorProps> = ({
           <span>{createToast}</span>
         </div>
       )}
+
+      {/* Header Slide Viewer Modal */}
+      <SlideViewerModal
+        node={node}
+        difficulty={difficulty}
+        isOpen={isHeaderSlidesOpen}
+        onClose={() => setIsHeaderSlidesOpen(false)}
+      />
     </aside>
   );
 };

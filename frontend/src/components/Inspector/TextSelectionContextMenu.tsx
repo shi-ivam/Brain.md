@@ -25,8 +25,12 @@ export const TextSelectionContextMenu: React.FC<TextSelectionContextMenuProps> =
   const menuRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  const cleanedText = selectedText.trim().replace(/\s+/g, ' ');
-  const defaultTitle = cleanedText.length > 70 ? cleanedText.slice(0, 67) + '...' : cleanedText;
+  let initial = selectedText.trim().replace(/\s+/g, ' ');
+  const titleFieldMatch = initial.match(/^title:\s*["']?([^"'\n\r]+)["']?/i);
+  if (titleFieldMatch) {
+    initial = titleFieldMatch[1].trim();
+  }
+  const defaultTitle = initial.length > 70 ? initial.slice(0, 67) + '...' : initial;
 
   const [title, setTitle] = useState(defaultTitle);
   const [convertToWikilink, setConvertToWikilink] = useState(canConvertToWikilink);
@@ -78,8 +82,8 @@ export const TextSelectionContextMenu: React.FC<TextSelectionContextMenuProps> =
   };
 
   // Clamped positioning
-  const menuWidth = 280;
-  const menuHeight = 320;
+  const menuWidth = 310;
+  const menuHeight = 360;
   const left = Math.max(12, Math.min(position.x, window.innerWidth - menuWidth - 16));
   const top = Math.max(12, Math.min(position.y, window.innerHeight - menuHeight - 16));
 
@@ -104,10 +108,10 @@ export const TextSelectionContextMenu: React.FC<TextSelectionContextMenuProps> =
         borderRadius: '8px',
         boxShadow: '0 12px 36px rgba(0, 0, 0, 0.75)',
         zIndex: 1000,
-        padding: '10px 12px',
+        padding: '12px 14px',
         display: 'flex',
         flexDirection: 'column',
-        gap: '8px',
+        gap: '9px',
         userSelect: 'none',
         backdropFilter: 'blur(12px)',
       }}
@@ -116,20 +120,20 @@ export const TextSelectionContextMenu: React.FC<TextSelectionContextMenuProps> =
       {/* Header */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#bfa4f8" strokeWidth="2.5">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#bfa4f8" strokeWidth="2.5">
             <path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
           </svg>
-          <span style={{ fontSize: '10px', fontFamily: 'var(--font-mono)', fontWeight: 600, color: 'var(--text-muted)', letterSpacing: '0.05em' }}>
+          <span style={{ fontSize: '11.5px', fontFamily: 'var(--font-mono)', fontWeight: 600, color: 'var(--text-muted)', letterSpacing: '0.05em' }}>
             CREATE NODE FROM SELECTION
           </span>
         </div>
         <button
           onClick={onClose}
           className="obsidian-btn-subtle"
-          style={{ padding: '2px', color: 'var(--text-muted)' }}
+          style={{ padding: '3px', color: 'var(--text-muted)' }}
           title="Close"
         >
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
             <line x1="18" y1="6" x2="6" y2="18" />
             <line x1="6" y1="6" x2="18" y2="18" />
           </svg>
@@ -153,8 +157,8 @@ export const TextSelectionContextMenu: React.FC<TextSelectionContextMenuProps> =
           disabled={isSubmitting}
           style={{
             width: '100%',
-            padding: '6px 8px',
-            fontSize: '12px',
+            padding: '7px 10px',
+            fontSize: '13.5px',
             fontFamily: 'var(--font-sans)',
             fontWeight: 500,
             backgroundColor: 'var(--bg-card)',
@@ -164,7 +168,7 @@ export const TextSelectionContextMenu: React.FC<TextSelectionContextMenuProps> =
             outline: 'none',
           }}
         />
-        <div style={{ fontSize: '10px', color: 'var(--text-muted)', display: 'flex', justifyContent: 'space-between' }}>
+        <div style={{ fontSize: '11px', color: 'var(--text-muted)', display: 'flex', justifyContent: 'space-between' }}>
           <span>Connected to: <strong>{currentNode.title.slice(0, 18)}...</strong></span>
           <span>{title.length} chars</span>
         </div>
@@ -177,7 +181,7 @@ export const TextSelectionContextMenu: React.FC<TextSelectionContextMenuProps> =
             display: 'flex',
             alignItems: 'center',
             gap: '6px',
-            fontSize: '11px',
+            fontSize: '12.5px',
             color: 'var(--text-secondary)',
             cursor: 'pointer',
             padding: '2px 0',
@@ -189,7 +193,7 @@ export const TextSelectionContextMenu: React.FC<TextSelectionContextMenuProps> =
             onChange={(e) => setConvertToWikilink(e.target.checked)}
             style={{ accentColor: 'var(--accent-purple)', cursor: 'pointer' }}
           />
-          <span>Replace in note with <code style={{ color: '#c4b5fd', fontSize: '10px' }}>[[{title.slice(0, 14)}...]]</code></span>
+          <span>Replace in note with <code style={{ color: '#c4b5fd', fontSize: '11.5px' }}>[[{title.slice(0, 14)}...]]</code></span>
         </label>
       )}
 
@@ -207,8 +211,8 @@ export const TextSelectionContextMenu: React.FC<TextSelectionContextMenuProps> =
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'space-between',
-              padding: '5px 8px',
-              fontSize: '12px',
+              padding: '7px 10px',
+              fontSize: '13.5px',
               borderRadius: '4px',
               width: '100%',
               textAlign: 'left',
@@ -220,8 +224,8 @@ export const TextSelectionContextMenu: React.FC<TextSelectionContextMenuProps> =
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
               <span
                 style={{
-                  width: '8px',
-                  height: '8px',
+                  width: '9px',
+                  height: '9px',
                   borderRadius: '50%',
                   backgroundColor: nt.color,
                   display: 'inline-block',
@@ -229,13 +233,13 @@ export const TextSelectionContextMenu: React.FC<TextSelectionContextMenuProps> =
               />
               <span style={{ fontWeight: 500, color: 'var(--text-primary)' }}>New {nt.label}</span>
             </div>
-            <span style={{ fontSize: '10px', color: 'var(--text-muted)' }}>{nt.desc}</span>
+            <span style={{ fontSize: '11.5px', color: 'var(--text-muted)' }}>{nt.desc}</span>
           </button>
         ))}
       </div>
 
       {isSubmitting && (
-        <div style={{ fontSize: '11px', color: '#38bdf8', textAlign: 'center', paddingTop: '4px' }}>
+        <div style={{ fontSize: '12px', color: '#38bdf8', textAlign: 'center', paddingTop: '4px' }}>
           Creating node and updating graph...
         </div>
       )}

@@ -6,7 +6,7 @@ interface NodePlusPopoverProps {
   position: { x: number; y: number };
   difficulty: DifficultyLevel;
   onSelectAction: (
-    action: 'add_question' | 'add_note' | 'generate_quiz' | 'expand_subtopics' | 'decompose_question' | 'subquestions' | 'tested_concepts',
+    action: 'add_question' | 'add_note' | 'generate_quiz' | 'expand_subtopics' | 'decompose_question' | 'subquestions' | 'tested_concepts' | 'attach_resource' | 'generate_visualizations',
     node: GraphNode
   ) => void;
   onClose: () => void;
@@ -43,7 +43,7 @@ export const NodePlusPopover: React.FC<NodePlusPopoverProps> = ({
       onClick={(e) => e.stopPropagation()}
     >
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px', borderBottom: '1px solid var(--border-subtle)', paddingBottom: '4px' }}>
-        <span style={{ fontSize: '11px', fontFamily: 'var(--font-mono)', color: 'var(--text-secondary)' }}>
+        <span style={{ fontSize: '12.5px', fontFamily: 'var(--font-mono)', color: 'var(--text-secondary)' }}>
           EXPAND: {node.title.slice(0, 24)}...
         </span>
         <button onClick={onClose} className="obsidian-btn-subtle" style={{ padding: '2px' }}>
@@ -58,7 +58,7 @@ export const NodePlusPopover: React.FC<NodePlusPopoverProps> = ({
         <>
           <button
             className="obsidian-btn"
-            style={{ width: '100%', justifyContent: 'flex-start', fontSize: '12px' }}
+            style={{ width: '100%', justifyContent: 'flex-start', fontSize: '13.5px', padding: '7px 10px' }}
             onClick={() => onSelectAction('decompose_question', node)}
             title="Uses High Thinking to branch out foundational topics affecting this question"
           >
@@ -70,7 +70,7 @@ export const NodePlusPopover: React.FC<NodePlusPopoverProps> = ({
           </button>
           <button
             className="obsidian-btn"
-            style={{ width: '100%', justifyContent: 'flex-start', fontSize: '12px' }}
+            style={{ width: '100%', justifyContent: 'flex-start', fontSize: '13.5px', padding: '7px 10px' }}
             onClick={() => onSelectAction('subquestions', node)}
           >
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--tag-question-text)" strokeWidth="2">
@@ -82,7 +82,7 @@ export const NodePlusPopover: React.FC<NodePlusPopoverProps> = ({
           </button>
           <button
             className="obsidian-btn"
-            style={{ width: '100%', justifyContent: 'flex-start', fontSize: '12px' }}
+            style={{ width: '100%', justifyContent: 'flex-start', fontSize: '13.5px', padding: '7px 10px' }}
             onClick={() => onSelectAction('add_note', node)}
           >
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--tag-note-text)" strokeWidth="2">
@@ -96,7 +96,7 @@ export const NodePlusPopover: React.FC<NodePlusPopoverProps> = ({
         <>
           <button
             className="obsidian-btn"
-            style={{ width: '100%', justifyContent: 'flex-start', fontSize: '12px' }}
+            style={{ width: '100%', justifyContent: 'flex-start', fontSize: '13.5px', padding: '7px 10px' }}
             onClick={() => onSelectAction('tested_concepts', node)}
           >
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--tag-concept-text)" strokeWidth="2">
@@ -106,7 +106,7 @@ export const NodePlusPopover: React.FC<NodePlusPopoverProps> = ({
           </button>
           <button
             className="obsidian-btn"
-            style={{ width: '100%', justifyContent: 'flex-start', fontSize: '12px' }}
+            style={{ width: '100%', justifyContent: 'flex-start', fontSize: '13.5px', padding: '7px 10px' }}
             onClick={() => onSelectAction('add_question', node)}
           >
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--tag-question-text)" strokeWidth="2">
@@ -119,7 +119,7 @@ export const NodePlusPopover: React.FC<NodePlusPopoverProps> = ({
         <>
           <button
             className="obsidian-btn"
-            style={{ width: '100%', justifyContent: 'flex-start', fontSize: '12px' }}
+            style={{ width: '100%', justifyContent: 'flex-start', fontSize: '13.5px', padding: '7px 10px' }}
             onClick={() => onSelectAction('add_question', node)}
           >
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--tag-question-text)" strokeWidth="2">
@@ -131,7 +131,7 @@ export const NodePlusPopover: React.FC<NodePlusPopoverProps> = ({
           </button>
           <button
             className="obsidian-btn"
-            style={{ width: '100%', justifyContent: 'flex-start', fontSize: '12px' }}
+            style={{ width: '100%', justifyContent: 'flex-start', fontSize: '13.5px', padding: '7px 10px' }}
             onClick={() => onSelectAction('add_note', node)}
           >
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--tag-note-text)" strokeWidth="2">
@@ -142,7 +142,7 @@ export const NodePlusPopover: React.FC<NodePlusPopoverProps> = ({
           </button>
           <button
             className="obsidian-btn"
-            style={{ width: '100%', justifyContent: 'flex-start', fontSize: '12px' }}
+            style={{ width: '100%', justifyContent: 'flex-start', fontSize: '13.5px', padding: '7px 10px' }}
             onClick={() => onSelectAction('generate_quiz', node)}
           >
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--tag-quiz-text)" strokeWidth="2">
@@ -152,16 +152,38 @@ export const NodePlusPopover: React.FC<NodePlusPopoverProps> = ({
           </button>
           <button
             className="obsidian-btn"
-            style={{ width: '100%', justifyContent: 'flex-start', fontSize: '12px' }}
+            style={{ width: '100%', justifyContent: 'flex-start', fontSize: '13.5px', padding: '7px 10px' }}
             onClick={() => onSelectAction('expand_subtopics', node)}
           >
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--accent-purple)" strokeWidth="2">
               <line x1="6" y1="3" x2="6" y2="15" />
               <circle cx="18" cy="6" r="3" />
-              <circle cx="6" cy="18" r="3" />
+            <circle cx="6" cy="18" r="3" />
               <path d="M18 9a9 9 0 0 1-9 9" />
             </svg>
             Expand Deeper Subtopics
+          </button>
+          <button
+            className="obsidian-btn"
+            style={{ width: '100%', justifyContent: 'flex-start', fontSize: '13.5px', padding: '7px 10px' }}
+            onClick={() => onSelectAction('generate_visualizations', node)}
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#818cf8" strokeWidth="2">
+              <polygon points="12 2 2 7 12 12 22 7 12 2" />
+              <polyline points="2 17 12 22 22 17" />
+              <polyline points="2 12 12 17 22 12" />
+            </svg>
+            Generate Visualizations
+          </button>
+          <button
+            className="obsidian-btn"
+            style={{ width: '100%', justifyContent: 'flex-start', fontSize: '13.5px', padding: '7px 10px' }}
+            onClick={() => onSelectAction('attach_resource', node)}
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#ef4444" strokeWidth="2">
+              <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48" />
+            </svg>
+            Attach Resource (Video / PDF)
           </button>
         </>
       )}

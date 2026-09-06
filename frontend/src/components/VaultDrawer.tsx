@@ -112,10 +112,10 @@ export const VaultDrawer: React.FC<VaultDrawerProps> = ({
           }}
         >
           <div>
-            <h2 style={{ fontSize: '16px', margin: '0 0 2px 0', fontWeight: 600 }}>
+            <h2 style={{ fontSize: '18.5px', margin: '0 0 2px 0', fontWeight: 600 }}>
               Knowledge Vaults
             </h2>
-            <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
+            <span style={{ fontSize: '13.5px', color: 'var(--text-muted)' }}>
               Persistent SQLite storage ({topics.length} topics saved)
             </span>
           </div>
@@ -132,21 +132,21 @@ export const VaultDrawer: React.FC<VaultDrawerProps> = ({
               onClick={() => fileInputRef.current?.click()}
               disabled={isImportingJson}
               className="obsidian-btn obsidian-btn-subtle"
-              style={{ fontSize: '12px', padding: '4px 10px', display: 'flex', alignItems: 'center', gap: '5px' }}
+              style={{ fontSize: '13.5px', padding: '5px 12px', display: 'flex', alignItems: 'center', gap: '5px' }}
               title="Import Topic JSON Backup"
             >
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                 <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
                 <polyline points="17 8 12 3 7 8" />
                 <line x1="12" y1="3" x2="12" y2="15" />
               </svg>
               {isImportingJson ? 'Importing...' : 'Import Backup'}
             </button>
-            <button onClick={onNewTopic} className="obsidian-btn obsidian-btn-primary" style={{ fontSize: '12px', padding: '4px 10px' }}>
+            <button onClick={onNewTopic} className="obsidian-btn obsidian-btn-primary" style={{ fontSize: '13.5px', padding: '5px 12px' }}>
               + New Topic
             </button>
             <button onClick={onClose} className="obsidian-btn-subtle" style={{ padding: '4px' }}>
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                 <line x1="18" y1="6" x2="6" y2="18" />
                 <line x1="6" y1="6" x2="18" y2="18" />
               </svg>
@@ -157,7 +157,7 @@ export const VaultDrawer: React.FC<VaultDrawerProps> = ({
         {/* Topics List */}
         <div style={{ flex: 1, overflowY: 'auto', padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
           {topics.length === 0 ? (
-            <div style={{ textAlign: 'center', padding: '40px 16px', color: 'var(--text-muted)', fontSize: '13px' }}>
+            <div style={{ textAlign: 'center', padding: '40px 16px', color: 'var(--text-muted)', fontSize: '14.5px' }}>
               No topics created yet. Type any subject in the spotlight search to begin.
             </div>
           ) : (
@@ -185,14 +185,14 @@ export const VaultDrawer: React.FC<VaultDrawerProps> = ({
                     style={{ flex: 1, cursor: 'pointer' }}
                   >
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
-                      <span style={{ fontSize: '14px', fontWeight: 500, color: 'var(--text-primary)' }}>
+                      <span style={{ fontSize: '15.5px', fontWeight: 500, color: 'var(--text-primary)' }}>
                         {t.title}
                       </span>
-                      <span className={`obsidian-badge badge-concept`} style={{ fontSize: '10px' }}>
+                      <span className={`obsidian-badge badge-concept`} style={{ fontSize: '11.5px' }}>
                         {t.difficulty?.toUpperCase()}
                       </span>
                     </div>
-                    <div style={{ fontSize: '11px', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>
+                    <div style={{ fontSize: '12px', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>
                       {new Date(t.created_at).toLocaleDateString()}
                     </div>
                   </div>
@@ -205,7 +205,7 @@ export const VaultDrawer: React.FC<VaultDrawerProps> = ({
                       title="Export Topic JSON Backup"
                       style={{ padding: '6px' }}
                     >
-                      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                         <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
                         <polyline points="14 2 14 8 20 8" />
                         <line x1="12" y1="18" x2="12" y2="12" />
@@ -219,7 +219,7 @@ export const VaultDrawer: React.FC<VaultDrawerProps> = ({
                       title="Export to Obsidian Vault (.zip)"
                       style={{ padding: '6px' }}
                     >
-                      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                         <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
                         <polyline points="7 10 12 15 17 10" />
                         <line x1="12" y1="15" x2="12" y2="3" />
@@ -235,7 +235,7 @@ export const VaultDrawer: React.FC<VaultDrawerProps> = ({
                       title="Delete graph"
                       style={{ padding: '6px', color: '#f87171' }}
                     >
-                      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                         <polyline points="3 6 5 6 21 6" />
                         <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
                       </svg>

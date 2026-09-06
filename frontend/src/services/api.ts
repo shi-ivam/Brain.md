@@ -13,6 +13,17 @@ import {
   ReviewQueueResponse,
   NodeType,
   CommunityGroupResponse,
+  NodeResource,
+  SlideDeck,
+  BridgeEdgeRequest,
+  BridgeEdgeResponse,
+  ManualInsertNodeOnEdgeRequest,
+  ManualInsertNodeOnEdgeResponse,
+  GraphWeaveRequest,
+  GraphWeaveResponse,
+  NodeVisualization,
+  VisualizationGenerateRequest,
+  VisualizationSuggestion,
 } from '../types';
 
 const API_BASE = '/api';
@@ -452,4 +463,286 @@ export async function autoOrganizeTopic(
   }
   return res.json();
 }
+
+export async function fetchNodeResources(nodeId: string): Promise<NodeResource[]> {
+  const res = await fetch(`${API_BASE}/nodes/${nodeId}/resources`);
+  if (!res.ok) throw new Error('Failed to fetch node resources');
+  return res.json();
+}
+
+export async function createResource(
+  nodeId: string,
+  payload: {
+    title: string;
+    url: string;
+    resource_type?: string;
+    thumbnail_url?: string;
+    notes?: string;
+    metadata?: any;
+  }
+): Promise<NodeResource> {
+  const res = await fetch(`${API_BASE}/nodes/${nodeId}/resources`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: 'Failed to create resource' }));
+    throw new Error(err.detail || 'Failed to create resource');
+  }
+  return res.json();
+}
+
+export async function uploadResourceFile(
+  nodeId: string,
+  file: File,
+  title?: string,
+  notes?: string
+): Promise<NodeResource> {
+  const formData = new FormData();
+  formData.append('file', file);
+  if (title) formData.append('title', title);
+  if (notes) formData.append('notes', notes);
+
+  const res = await fetch(`${API_BASE}/nodes/${nodeId}/resources/upload`, {
+    method: 'POST',
+    body: formData,
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: 'Failed to upload resource file' }));
+    throw new Error(err.detail || 'Failed to upload resource file');
+  }
+  return res.json();
+}
+
+export async function updateResource(
+  resourceId: string,
+  payload: { title?: string; notes?: string; metadata?: any }
+): Promise<NodeResource> {
+  const res = await fetch(`${API_BASE}/resources/${resourceId}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: 'Failed to update resource' }));
+    throw new Error(err.detail || 'Failed to update resource');
+  }
+  return res.json();
+}
+
+export async function deleteResource(resourceId: string): Promise<void> {
+  const res = await fetch(`${API_BASE}/resources/${resourceId}`, {
+    method: 'DELETE',
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: 'Failed to delete resource' }));
+    throw new Error(err.detail || 'Failed to delete resource');
+  }
+}
+
+export async function suggestResources(
+  nodeId: string,
+  difficulty?: string
+): Promise<{ concept: string; resources: any[] }> {
+  const res = await fetch(`${API_BASE}/nodes/${nodeId}/resources/suggest`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(difficulty ? { difficulty } : {}),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: 'Failed to suggest resources' }));
+    throw new Error(err.detail || 'Failed to suggest resources');
+  }
+  return res.json();
+}
+
+export async function fetchNodeSlides(nodeId: string): Promise<SlideDeck | null> {
+  const res = await fetch(`${API_BASE}/nodes/${nodeId}/slides`);
+  if (res.status === 404) return null;
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: 'Failed to fetch slides' }));
+    throw new Error(err.detail || 'Failed to fetch slides');
+  }
+  return res.json();
+}
+
+export async function generateNodeSlides(
+  nodeId: string,
+  forceRefresh: boolean = false,
+  difficulty?: string
+): Promise<SlideDeck> {
+  const res = await fetch(`${API_BASE}/nodes/${nodeId}/slides/generate`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ force_refresh: forceRefresh, difficulty }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: 'Failed to generate slides' }));
+    throw new Error(err.detail || 'Failed to generate slides');
+  }
+  return res.json();
+}
+
+export function getNodeSlidesDownloadUrl(nodeId: string, format: 'pptx' | 'html' = 'pptx'): string {
+  return `${API_BASE}/nodes/${nodeId}/slides/download?format=${format}`;
+}
+
+export async function deleteEdge(
+  edgeId: string
+): Promise<{ success: boolean; deleted_edge_id: string; topic_id: string }> {
+  const res = await fetch(`${API_BASE}/edges/${edgeId}`, {
+    method: 'DELETE',
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: 'Failed to delete edge' }));
+    throw new Error(err.detail || 'Failed to delete edge');
+  }
+  return res.json();
+}
+
+export async function bridgeEdgeTransition(
+  edgeId: string,
+  req: BridgeEdgeRequest
+): Promise<BridgeEdgeResponse> {
+  const res = await fetch(`${API_BASE}/edges/${edgeId}/bridge`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(req),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: 'Failed to bridge edge transition' }));
+    throw new Error(err.detail || 'Failed to bridge edge transition');
+  }
+  return res.json();
+}
+
+export async function insertNodeOnEdge(
+  edgeId: string,
+  req: ManualInsertNodeOnEdgeRequest
+): Promise<ManualInsertNodeOnEdgeResponse> {
+  const res = await fetch(`${API_BASE}/edges/${edgeId}/insert-node`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(req),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: 'Failed to insert node on edge' }));
+    throw new Error(err.detail || 'Failed to insert node on edge');
+  }
+  return res.json();
+}
+
+export async function weaveConceptIntoGraph(
+  topicId: string,
+  req: GraphWeaveRequest
+): Promise<GraphWeaveResponse> {
+  const res = await fetch(`${API_BASE}/topics/${topicId}/weave`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(req),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: 'Failed to weave concept into graph' }));
+    throw new Error(err.detail || 'Failed to weave concept into graph');
+  }
+  return res.json();
+}
+
+// ==================== Node Visualizations API ====================
+
+export async function fetchNodeVisualizations(nodeId: string): Promise<NodeVisualization[]> {
+  const res = await fetch(`${API_BASE}/nodes/${nodeId}/visualizations`);
+  if (!res.ok) throw new Error('Failed to fetch node visualizations');
+  return res.json();
+}
+
+export async function generateNodeVisualizations(
+  nodeId: string,
+  req: VisualizationGenerateRequest = {}
+): Promise<NodeVisualization[]> {
+  const res = await fetch(`${API_BASE}/nodes/${nodeId}/visualizations/generate`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(req),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: 'Failed to generate visualizations' }));
+    throw new Error(err.detail || 'Failed to generate visualizations');
+  }
+  return res.json();
+}
+
+export async function createNodeVisualization(
+  nodeId: string,
+  payload: {
+    title: string;
+    code: string;
+    visualization_type?: string;
+    description?: string;
+    explanation?: string;
+    format?: string;
+    metadata?: any;
+  }
+): Promise<NodeVisualization> {
+  const res = await fetch(`${API_BASE}/nodes/${nodeId}/visualizations`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: 'Failed to create visualization' }));
+    throw new Error(err.detail || 'Failed to create visualization');
+  }
+  return res.json();
+}
+
+export async function updateNodeVisualization(
+  visId: string,
+  payload: {
+    title?: string;
+    code?: string;
+    visualization_type?: string;
+    description?: string;
+    explanation?: string;
+    metadata?: any;
+  }
+): Promise<NodeVisualization> {
+  const res = await fetch(`${API_BASE}/visualizations/${visId}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: 'Failed to update visualization' }));
+    throw new Error(err.detail || 'Failed to update visualization');
+  }
+  return res.json();
+}
+
+export async function deleteNodeVisualization(visId: string): Promise<boolean> {
+  const res = await fetch(`${API_BASE}/visualizations/${visId}`, {
+    method: 'DELETE',
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: 'Failed to delete visualization' }));
+    throw new Error(err.detail || 'Failed to delete visualization');
+  }
+  const data = await res.json();
+  return !!data.deleted;
+}
+
+export async function fetchVisualizationSuggestions(nodeId: string): Promise<VisualizationSuggestion[]> {
+  const res = await fetch(`${API_BASE}/nodes/${nodeId}/visualizations/suggest`);
+  if (!res.ok) throw new Error('Failed to fetch visualization suggestions');
+  const data = await res.json();
+  return data.suggestions || [];
+}
+
+export function getNodeVisualizationExportUrl(visId: string, format: 'html' | 'markdown' | 'raw' = 'html'): string {
+  return `${API_BASE}/visualizations/${visId}/export?format=${format}`;
+}
+
+
+
 

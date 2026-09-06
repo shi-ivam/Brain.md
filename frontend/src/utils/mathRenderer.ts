@@ -64,6 +64,16 @@ markedInstance.use({
       const slug = slugifyHeader(text);
       return `<h${depth} id="${slug}" data-heading="${text.replace(/"/g, '&quot;')}">${text}</h${depth}>\n`;
     },
+    link({ href, title, text }) {
+      const ytMatch = href?.match(/(?:youtu\.be\/|youtube\.com\/(?:embed\/|v\/|watch\?v=|shorts\/))([\w-]{11})/);
+      if (ytMatch) {
+        return `<a class="resource-link-yt" href="${href}" target="_blank" rel="noreferrer"><span class="yt-badge">YouTube</span> ${text}</a>`;
+      }
+      if (href?.toLowerCase().includes('.pdf') || href?.startsWith('/api/resources/files/')) {
+        return `<a class="resource-link-pdf" href="${href}" target="_blank" rel="noreferrer"><span class="pdf-badge">PDF</span> ${text}</a>`;
+      }
+      return `<a href="${href}" target="_blank" rel="noreferrer"${title ? ` title="${title}"` : ''}>${text}</a>`;
+    },
   },
   extensions: [
     {
@@ -172,14 +182,164 @@ function tokenizeMath(rawText: string): { text: string; placeholders: MathToken[
   return { text, placeholders };
 }
 
+export interface FrontmatterMeta {
+  title?: string;
+  difficulty?: string;
+  tags?: string[];
+  [key: string]: any;
+}
+
+function escapeHtml(str: string): string {
+  return str
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+/**
+ * Extracts YAML frontmatter (---\n...\n---) from markdown text.
+ */
+export function parseFrontmatter(markdown: string): {
+  frontmatter: FrontmatterMeta | null;
+  body: string;
+} {
+  if (!markdown) return { frontmatter: null, body: '' };
+
+  const frontmatterRegex = /^\s*---\r?\n([\s\S]*?)\r?\n---\r?\n?/;
+  const match = markdown.match(frontmatterRegex);
+
+  if (!match) {
+    return { frontmatter: null, body: markdown };
+  }
+
+  const rawYaml = match[1];
+  const body = markdown.slice(match[0].length);
+
+  const frontmatter: FrontmatterMeta = {};
+  const lines = rawYaml.split(/\r?\n/);
+  let currentKey: string | null = null;
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith('#')) continue;
+
+    if (trimmed.startsWith('- ') && currentKey === 'tags') {
+      const item = trimmed.slice(2).trim().replace(/^["']|["']$/g, '');
+      if (item) {
+        if (!frontmatter.tags) frontmatter.tags = [];
+        frontmatter.tags.push(item);
+      }
+      continue;
+    }
+
+    const colonIdx = trimmed.indexOf(':');
+    if (colonIdx === -1) continue;
+
+    const key = trimmed.slice(0, colonIdx).trim().toLowerCase();
+    let val = trimmed.slice(colonIdx + 1).trim();
+    currentKey = key;
+
+    if ((val.startsWith('"') && val.endsWith('"')) || (val.startsWith("'") && val.endsWith("'"))) {
+      val = val.slice(1, -1);
+    }
+
+    if (key === 'tags') {
+      if (val.startsWith('[') && val.endsWith(']')) {
+        frontmatter.tags = val
+          .slice(1, -1)
+          .split(',')
+          .map((s) => s.trim().replace(/^["']|["']$/g, ''))
+          .filter(Boolean);
+      } else if (val) {
+        frontmatter.tags = [val];
+      }
+    } else {
+      frontmatter[key] = val;
+    }
+  }
+
+  return { frontmatter, body };
+}
+
+/**
+ * Formats frontmatter metadata into an authentic Obsidian Properties card.
+ */
+function renderFrontmatterPropertiesHtml(meta: FrontmatterMeta): string {
+  const parts: string[] = [];
+
+  // Tags
+  if (meta.tags && meta.tags.length > 0) {
+    const tagChips = meta.tags
+      .map(
+        (tag) =>
+          `<span class="obsidian-tag-pill" style="display:inline-flex;align-items:center;padding:2px 8px;font-size:11px;font-family:var(--font-mono, monospace);border-radius:12px;background-color:rgba(191,164,248,0.12);color:var(--tag-concept-text, #bfa4f8);border:1px solid rgba(191,164,248,0.25);margin-right:4px;margin-bottom:4px;">#${escapeHtml(
+            tag.replace(/^#/, '')
+          )}</span>`
+      )
+      .join('');
+    parts.push(`
+      <div style="display:flex;align-items:flex-start;gap:10px;margin-bottom:6px;">
+        <span style="font-size:11px;font-family:var(--font-mono, monospace);color:var(--text-muted, #8a8a93);min-width:60px;padding-top:2px;">tags</span>
+        <div style="display:flex;flex-wrap:wrap;gap:4px;">${tagChips}</div>
+      </div>
+    `);
+  }
+
+  // Difficulty
+  if (meta.difficulty) {
+    parts.push(`
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px;">
+        <span style="font-size:11px;font-family:var(--font-mono, monospace);color:var(--text-muted, #8a8a93);min-width:60px;">difficulty</span>
+        <span style="font-size:10px;font-family:var(--font-mono, monospace);text-transform:uppercase;font-weight:600;padding:1px 6px;border-radius:4px;background-color:rgba(255,255,255,0.06);color:var(--text-secondary, #b4b4bc);">${escapeHtml(
+          meta.difficulty
+        )}</span>
+      </div>
+    `);
+  }
+
+  if (parts.length === 0) return '';
+
+  return `
+    <div class="obsidian-properties-card" style="margin-bottom:20px;padding:10px 14px;background-color:rgba(255,255,255,0.02);border:1px solid var(--border-subtle, #27272a);border-radius:6px;">
+      <div style="display:flex;align-items:center;gap:6px;margin-bottom:8px;padding-bottom:6px;border-bottom:1px solid rgba(255,255,255,0.05);color:var(--text-muted, #8a8a93);font-size:11px;font-family:var(--font-sans, sans-serif);font-weight:500;">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <line x1="8" y1="6" x2="21" y2="6"></line>
+          <line x1="8" y1="12" x2="21" y2="12"></line>
+          <line x1="8" y1="18" x2="21" y2="18"></line>
+          <line x1="3" y1="6" x2="3.01" y2="6"></line>
+          <line x1="3" y1="12" x2="3.01" y2="12"></line>
+          <line x1="3" y1="18" x2="3.01" y2="18"></line>
+        </svg>
+        Properties
+      </div>
+      ${parts.join('')}
+    </div>
+  `;
+}
+
 /**
  * Renders full markdown text with robust KaTeX math rendering.
  * Tokenizes math into placeholders first so marked.parse() NEVER corrupts KaTeX markup.
+ * Parses YAML frontmatter cleanly into an Obsidian Properties banner without producing fake H2 headings.
  */
 export function renderMarkdownWithMath(markdown: string): string {
   if (!markdown) return '';
 
-  const { text: tokenized, placeholders } = tokenizeMath(markdown);
+  // 1. Parse and extract YAML frontmatter if present
+  const { frontmatter, body: rawBody } = parseFrontmatter(markdown);
+  let frontmatterHtml = '';
+  let bodyToRender = rawBody;
+
+  if (frontmatter) {
+    frontmatterHtml = renderFrontmatterPropertiesHtml(frontmatter);
+    // If the body does not start with an H1 (# Title), prepend the frontmatter title as H1
+    if (frontmatter.title && !bodyToRender.trim().startsWith('# ')) {
+      bodyToRender = `# ${frontmatter.title}\n\n` + bodyToRender.trimStart();
+    }
+  }
+
+  const { text: tokenized, placeholders } = tokenizeMath(bodyToRender);
 
   // Obsidian callouts > [!NOTE], > [!THEOREM], etc.
   let cleanText = tokenized.replace(/>\s*\[!(NOTE|TIP|WARNING|THEOREM|CAUTION|IMPORTANT|DEFINITION|INFO)\]\s*([^\n]*)/gi, (_, type, title) => {
@@ -191,17 +351,108 @@ export function renderMarkdownWithMath(markdown: string): string {
   // Parse clean Markdown with wikilink and header id support
   let html = markedInstance.parse(cleanText, { async: false }) as string;
 
-  // Inject KaTeX back in place of placeholders (avoids invalid <p><div> nesting)
+  // Inject KaTeX back in place of placeholders (avoids invalid <p><div> nesting and duplicate margins)
   html = html.replace(/<p>\s*@@MATH_DISPLAY_(\d+)@@\s*<\/p>/g, (_, idx) => {
     const item = placeholders[parseInt(idx, 10)];
-    return `<div class="katex-display">${katex.renderToString(item.eq, { displayMode: true, throwOnError: false })}</div>`;
+    return katex.renderToString(item.eq, { displayMode: true, throwOnError: false });
   });
 
   html = html.replace(/@@MATH_DISPLAY_(\d+)@@/g, (_, idx) => {
     const item = placeholders[parseInt(idx, 10)];
-    return `<div class="katex-display">${katex.renderToString(item.eq, { displayMode: true, throwOnError: false })}</div>`;
+    return katex.renderToString(item.eq, { displayMode: true, throwOnError: false });
   });
 
+  html = html.replace(/@@MATH_INLINE_(\d+)@@/g, (_, idx) => {
+    const item = placeholders[parseInt(idx, 10)];
+    return katex.renderToString(item.eq, { displayMode: false, throwOnError: false });
+  });
+
+  return frontmatterHtml + html;
+}
+
+/**
+ * Sanitizes a LaTeX formula string by removing accidental wrapper delimiters:
+ * - $$ ... $$
+ * - $ ... $
+ * - \[ ... \]
+ * - \( ... \)
+ * Also filters out null, undefined, "none", "n/a", etc.
+ */
+export function cleanFormulaString(rawFormula?: string | null): string {
+  if (!rawFormula) return '';
+  let f = rawFormula.trim();
+  const lower = f.toLowerCase();
+  if (lower === 'none' || lower === 'null' || lower === 'n/a' || lower === 'undefined') {
+    return '';
+  }
+
+  // Strip wrapping \[ ... \]
+  if (f.startsWith('\\[') && f.endsWith('\\]')) {
+    f = f.slice(2, -2).trim();
+  }
+  // Strip wrapping $$ ... $$
+  else if (f.startsWith('$$') && f.endsWith('$$')) {
+    f = f.slice(2, -2).trim();
+  }
+  // Strip wrapping \( ... \)
+  else if (f.startsWith('\\(') && f.endsWith('\\)')) {
+    f = f.slice(2, -2).trim();
+  }
+  // Strip wrapping $ ... $
+  else if (f.startsWith('$') && f.endsWith('$')) {
+    f = f.slice(1, -1).trim();
+  }
+
+  // Strip any lingering double or single dollars at ends
+  f = f.replace(/^(\$\$|\$)+/, '').replace(/(\$\$|\$)+$/, '').trim();
+  return f;
+}
+
+/**
+ * Safely renders a slide's primary mathematical formula in display mode using KaTeX.
+ */
+export function renderSlideFormula(rawFormula?: string | null): string {
+  const cleaned = cleanFormulaString(rawFormula);
+  if (!cleaned) return '';
+
+  try {
+    return katex.renderToString(cleaned, { displayMode: true, throwOnError: false });
+  } catch {
+    return `<div style="font-family: var(--font-mono, monospace); color: #38bdf8; font-size: 14px; text-align: center;">${escapeHtml(
+      cleaned
+    )}</div>`;
+  }
+}
+
+/**
+ * Renders inline text with Markdown formatting (bold, italics, code, links)
+ * AND KaTeX math rendering, WITHOUT wrapping the output in block-level <p> or <ul> tags.
+ * Perfect for slide bullet points, card callouts, and interactive questions.
+ */
+export function renderInlineMarkdownWithMath(markdown: string): string {
+  if (!markdown) return '';
+
+  // Clean leading bullet markers like "- ", "* ", "• ", "1. "
+  const clean = markdown
+    .trim()
+    .replace(/^[-*•]\s+/, '')
+    .replace(/^\d+[\.\)]\s+/, '')
+    .trim();
+
+  if (!clean) return '';
+
+  const { text: tokenized, placeholders } = tokenizeMath(clean);
+
+  // Parse inline Markdown (no <p> wrappers)
+  let html = markedInstance.parseInline(tokenized, { async: false }) as string;
+
+  // Restore KaTeX display math
+  html = html.replace(/@@MATH_DISPLAY_(\d+)@@/g, (_, idx) => {
+    const item = placeholders[parseInt(idx, 10)];
+    return katex.renderToString(item.eq, { displayMode: true, throwOnError: false });
+  });
+
+  // Restore KaTeX inline math
   html = html.replace(/@@MATH_INLINE_(\d+)@@/g, (_, idx) => {
     const item = placeholders[parseInt(idx, 10)];
     return katex.renderToString(item.eq, { displayMode: false, throwOnError: false });

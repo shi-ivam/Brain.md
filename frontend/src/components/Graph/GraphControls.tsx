@@ -27,6 +27,7 @@ interface GraphControlsProps {
   onSelectCommunity?: (communityId: number | null) => void;
   onAutoOrganize?: () => void;
   isAutoOrganizing?: boolean;
+  onOpenWeave?: () => void;
 }
 
 const ALL_TYPES: { type: NodeType; label: string; color: string }[] = [
@@ -63,6 +64,7 @@ export const GraphControls: React.FC<GraphControlsProps> = ({
   onSelectCommunity,
   onAutoOrganize,
   isAutoOrganizing = false,
+  onOpenWeave,
 }) => {
   const [isPathFinderOpen, setIsPathFinderOpen] = useState(false);
   const [sourceNodeId, setSourceNodeId] = useState('');
@@ -110,8 +112,8 @@ export const GraphControls: React.FC<GraphControlsProps> = ({
           <button
             onClick={() => onToggleLayout('dag')}
             style={{
-              padding: '3px 8px',
-              fontSize: '11px',
+              padding: '4px 9px',
+              fontSize: '12.5px',
               fontFamily: 'var(--font-sans)',
               backgroundColor: layoutMode === 'dag' ? 'var(--bg-hover)' : 'transparent',
               color: layoutMode === 'dag' ? 'var(--text-primary)' : 'var(--text-muted)',
@@ -127,8 +129,8 @@ export const GraphControls: React.FC<GraphControlsProps> = ({
           <button
             onClick={() => onToggleLayout('force')}
             style={{
-              padding: '3px 8px',
-              fontSize: '11px',
+              padding: '4px 9px',
+              fontSize: '12.5px',
               fontFamily: 'var(--font-sans)',
               backgroundColor: layoutMode === 'force' ? 'var(--bg-hover)' : 'transparent',
               color: layoutMode === 'force' ? 'var(--text-primary)' : 'var(--text-muted)',
@@ -192,8 +194,8 @@ export const GraphControls: React.FC<GraphControlsProps> = ({
                 display: 'flex',
                 alignItems: 'center',
                 gap: '4px',
-                padding: '3px 8px',
-                fontSize: '11px',
+                padding: '4px 9px',
+                fontSize: '12.5px',
                 fontFamily: 'var(--font-sans)',
                 color: 'var(--text-primary)',
                 backgroundColor: 'rgba(191, 164, 248, 0.12)',
@@ -210,6 +212,34 @@ export const GraphControls: React.FC<GraphControlsProps> = ({
               {isAutoOrganizing ? 'Organizing...' : 'Auto Organize'}
             </button>
           )}
+
+          {/* Weave Concept / Ingestion button */}
+          {onOpenWeave && (
+            <button
+              onClick={onOpenWeave}
+              className="obsidian-btn-subtle"
+              title="Weave into Knowledge Graph (Type any question or concept, and AI will dock it at the right anchor)"
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '4px',
+                padding: '4px 9px',
+                fontSize: '12.5px',
+                fontFamily: 'var(--font-sans)',
+                color: 'var(--text-primary)',
+                backgroundColor: 'rgba(99, 102, 241, 0.15)',
+                border: '1px solid rgba(99, 102, 241, 0.35)',
+                borderRadius: '4px',
+                cursor: 'pointer',
+                fontWeight: 500,
+              }}
+            >
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="m12 3-1.9 5.8a2 2 0 0 1-1.3 1.3L3 12l5.8 1.9a2 2 0 0 1 1.3 1.3L12 21l1.9-5.8a2 2 0 0 1 1.3-1.3L21 12l-5.8-1.9a2 2 0 0 1-1.3-1.3z" />
+              </svg>
+              <span>Weave</span>
+            </button>
+          )}
         </div>
       </div>
 
@@ -218,18 +248,18 @@ export const GraphControls: React.FC<GraphControlsProps> = ({
         {/* Lens dropdown */}
         {onLensModeChange && (
           <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-            <span style={{ fontSize: '10px', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>Lens:</span>
+            <span style={{ fontSize: '11.5px', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>Lens:</span>
             <select
               value={lensMode}
               onChange={(e) => onLensModeChange(e.target.value as 'all' | '1-hop' | '2-hop')}
               style={{
-                fontSize: '11px',
+                fontSize: '12.5px',
                 fontFamily: 'var(--font-sans)',
                 backgroundColor: 'var(--bg-card)',
                 color: 'var(--text-primary)',
                 border: '1px solid var(--border-subtle)',
                 borderRadius: '4px',
-                padding: '2px 4px',
+                padding: '3px 6px',
                 outline: 'none',
                 cursor: 'pointer',
               }}
@@ -245,21 +275,21 @@ export const GraphControls: React.FC<GraphControlsProps> = ({
         {/* Thematic Modules / Communities dropdown */}
         {communities && communities.length > 0 && onSelectCommunity && (
           <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-            <span style={{ fontSize: '10px', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>Module:</span>
+            <span style={{ fontSize: '11.5px', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>Module:</span>
             <select
               value={selectedCommunityId !== null && selectedCommunityId !== undefined ? String(selectedCommunityId) : 'all'}
               onChange={(e) => onSelectCommunity(e.target.value === 'all' ? null : Number(e.target.value))}
               style={{
-                fontSize: '11px',
+                fontSize: '12.5px',
                 fontFamily: 'var(--font-sans)',
                 backgroundColor: 'var(--bg-card)',
                 color: 'var(--text-primary)',
                 border: '1px solid var(--border-subtle)',
                 borderRadius: '4px',
-                padding: '2px 4px',
+                padding: '3px 6px',
                 outline: 'none',
                 cursor: 'pointer',
-                maxWidth: '125px',
+                maxWidth: '135px',
               }}
               title="Filter by topological learning module / community"
             >
@@ -279,8 +309,8 @@ export const GraphControls: React.FC<GraphControlsProps> = ({
             onClick={onColorModeToggle}
             className="obsidian-btn-subtle"
             style={{
-              fontSize: '11px',
-              padding: '2px 6px',
+              fontSize: '12.5px',
+              padding: '3px 8px',
               borderRadius: '4px',
               border: '1px solid var(--border-subtle)',
               backgroundColor: colorMode === 'heatmap' ? 'rgba(239, 68, 68, 0.15)' : 'var(--bg-card)',
@@ -288,7 +318,7 @@ export const GraphControls: React.FC<GraphControlsProps> = ({
             }}
             title="Toggle between default node type colors and mastery gap heatmap"
           >
-            {colorMode === 'heatmap' ? '🔥 Heatmap' : '🎨 Nodes'}
+            {colorMode === 'heatmap' ? 'Heatmap' : 'Nodes'}
           </button>
         )}
 
@@ -299,8 +329,8 @@ export const GraphControls: React.FC<GraphControlsProps> = ({
               onClick={() => setIsPathFinderOpen((prev) => !prev)}
               className="obsidian-btn-subtle"
               style={{
-                fontSize: '11px',
-                padding: '2px 6px',
+                fontSize: '12.5px',
+                padding: '3px 8px',
                 borderRadius: '4px',
                 border: `1px solid ${shortestPathActive ? '#f59e0b' : 'var(--border-subtle)'}`,
                 backgroundColor: shortestPathActive ? 'rgba(245, 158, 11, 0.15)' : 'var(--bg-card)',
@@ -339,7 +369,7 @@ export const GraphControls: React.FC<GraphControlsProps> = ({
                 }}
               >
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <span style={{ fontSize: '12px', fontWeight: 600, color: '#f59e0b' }}>Shortest Path Trail</span>
+                  <span style={{ fontSize: '13.5px', fontWeight: 600, color: '#f59e0b' }}>Shortest Path Trail</span>
                   <button
                     onClick={() => setIsPathFinderOpen(false)}
                     className="obsidian-btn-subtle"
@@ -350,7 +380,7 @@ export const GraphControls: React.FC<GraphControlsProps> = ({
                 </div>
 
                 <div>
-                  <label style={{ fontSize: '10px', color: 'var(--text-muted)', display: 'block', marginBottom: '2px' }}>
+                  <label style={{ fontSize: '11.5px', color: 'var(--text-muted)', display: 'block', marginBottom: '3px' }}>
                     Start Concept:
                   </label>
                   <select
@@ -358,12 +388,12 @@ export const GraphControls: React.FC<GraphControlsProps> = ({
                     onChange={(e) => setSourceNodeId(e.target.value)}
                     style={{
                       width: '100%',
-                      fontSize: '11px',
+                      fontSize: '12.5px',
                       backgroundColor: 'var(--bg-card)',
                       color: 'var(--text-primary)',
                       border: '1px solid var(--border-subtle)',
                       borderRadius: '4px',
-                      padding: '4px',
+                      padding: '4px 6px',
                     }}
                   >
                     <option value="">Select origin node...</option>
@@ -376,7 +406,7 @@ export const GraphControls: React.FC<GraphControlsProps> = ({
                 </div>
 
                 <div>
-                  <label style={{ fontSize: '10px', color: 'var(--text-muted)', display: 'block', marginBottom: '2px' }}>
+                  <label style={{ fontSize: '11.5px', color: 'var(--text-muted)', display: 'block', marginBottom: '3px' }}>
                     Destination Concept:
                   </label>
                   <select
@@ -384,12 +414,12 @@ export const GraphControls: React.FC<GraphControlsProps> = ({
                     onChange={(e) => setTargetNodeId(e.target.value)}
                     style={{
                       width: '100%',
-                      fontSize: '11px',
+                      fontSize: '12.5px',
                       backgroundColor: 'var(--bg-card)',
                       color: 'var(--text-primary)',
                       border: '1px solid var(--border-subtle)',
                       borderRadius: '4px',
-                      padding: '4px',
+                      padding: '4px 6px',
                     }}
                   >
                     <option value="">Select target node...</option>
@@ -406,7 +436,7 @@ export const GraphControls: React.FC<GraphControlsProps> = ({
                     onClick={handleRunShortestPath}
                     disabled={!sourceNodeId || !targetNodeId || sourceNodeId === targetNodeId}
                     className="obsidian-btn obsidian-btn-primary"
-                    style={{ flex: 1, fontSize: '11px', padding: '4px 0', justifyContent: 'center' }}
+                    style={{ flex: 1, fontSize: '12.5px', padding: '5px 0', justifyContent: 'center' }}
                   >
                     Trace Path
                   </button>
@@ -417,7 +447,7 @@ export const GraphControls: React.FC<GraphControlsProps> = ({
                         setIsPathFinderOpen(false);
                       }}
                       className="obsidian-btn"
-                      style={{ fontSize: '11px', padding: '4px 8px' }}
+                      style={{ fontSize: '12.5px', padding: '5px 9px' }}
                     >
                       Clear
                     </button>
@@ -437,12 +467,12 @@ export const GraphControls: React.FC<GraphControlsProps> = ({
           backgroundColor: 'var(--bg-card)',
           border: '1px solid var(--border-subtle)',
           borderRadius: '4px',
-          padding: '2px 8px',
+          padding: '3px 9px',
         }}
       >
         <svg
-          width="12"
-          height="12"
+          width="13"
+          height="13"
           viewBox="0 0 24 24"
           fill="none"
           stroke="var(--text-muted)"
@@ -461,10 +491,10 @@ export const GraphControls: React.FC<GraphControlsProps> = ({
             backgroundColor: 'transparent',
             border: 'none',
             color: 'var(--text-primary)',
-            fontSize: '11px',
+            fontSize: '12.5px',
             fontFamily: 'var(--font-sans)',
             outline: 'none',
-            width: '130px',
+            width: '140px',
           }}
         />
         {searchFilter && (
@@ -482,7 +512,7 @@ export const GraphControls: React.FC<GraphControlsProps> = ({
       </div>
 
       {/* Type Filter Pills */}
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', maxWidth: '240px' }}>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', maxWidth: '260px' }}>
         {ALL_TYPES.map((t) => {
           const isActive = activeFilters.has(t.type);
           return (
@@ -490,9 +520,9 @@ export const GraphControls: React.FC<GraphControlsProps> = ({
               key={t.type}
               onClick={() => onToggleFilter(t.type)}
               style={{
-                fontSize: '10px',
+                fontSize: '11.5px',
                 fontFamily: 'var(--font-mono)',
-                padding: '2px 6px',
+                padding: '3px 7px',
                 borderRadius: '3px',
                 border: '1px solid',
                 borderColor: isActive ? t.color : 'var(--border-subtle)',

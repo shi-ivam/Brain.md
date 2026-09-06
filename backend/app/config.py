@@ -5,6 +5,8 @@ import google.auth
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
 DATA_DIR = BASE_DIR / "data"
 DATA_DIR.mkdir(parents=True, exist_ok=True)
+UPLOADS_DIR = DATA_DIR / "uploads"
+UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
 DATABASE_PATH = os.environ.get("DATABASE_PATH", str(DATA_DIR / "knowledge.db"))
 
 def get_default_project() -> str:

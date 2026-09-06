@@ -4,10 +4,11 @@ import { SpotlightSearch } from './components/SpotlightSearch';
 import { KnowledgeGraphCanvas, KnowledgeGraphCanvasHandle } from './components/Graph/KnowledgeGraphCanvas';
 import { GraphControls } from './components/Graph/GraphControls';
 import { RightInspector } from './components/Inspector/RightInspector';
-import { VaultDrawer } from './components/VaultDrawer';
-import { ReviewDrawer } from './components/ReviewDrawer';
-import { Breadcrumbs, BreadcrumbItem } from './components/Breadcrumbs';
-import { parseUrlHash, updateUrlHash, copyDeepLinkToClipboard } from './utils/urlRouter';
+import { Breadcrumbs } from './components/Breadcrumbs';
+import { AppModals } from './components/AppModals';
+import { useNavigationHistory } from './hooks/useNavigationHistory';
+import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
+import { parseUrlHash, updateUrlHash } from './utils/urlRouter';
 import {
   KnowledgeGraphData,
   Topic,
@@ -18,6 +19,9 @@ import {
   NodeType,
   ShortestPathResult,
   CommunityGroupInfo,
+  GraphWeaveResponse,
+  InspectorTab,
+  NodeVisualization,
 } from './types';
 import {
   fetchTopics,
@@ -34,6 +38,10 @@ import {
   fetchTopicCommunities,
   toggleNodeDone,
   autoOrganizeTopic,
+  bridgeEdgeTransition,
+  insertNodeOnEdge,
+  deleteEdge,
+  updateEdge,
 } from './services/api';
 
 export const App: React.FC = () => {
@@ -41,19 +49,19 @@ export const App: React.FC = () => {
   const [activeTopicId, setActiveTopicId] = useState<string | null>(null);
   const [graphData, setGraphData] = useState<KnowledgeGraphData | null>(null);
   const [selectedNode, setSelectedNode] = useState<GraphNode | null>(null);
-  const [inspectorTab, setInspectorTab] = useState<'notes' | 'questions' | 'quiz' | 'connections'>('notes');
+  const [inspectorTab, setInspectorTab] = useState<InspectorTab>('notes');
   const [targetSection, setTargetSection] = useState<string | undefined>(undefined);
 
-  // Navigation history for Breadcrumbs
-  const [history, setHistory] = useState<BreadcrumbItem[]>([]);
-  const [historyIndex, setHistoryIndex] = useState<number>(-1);
-  const [isLinkCopied, setIsLinkCopied] = useState(false);
-
+  // Modals & Drawers state
   const [isSpotlightOpen, setIsSpotlightOpen] = useState(false);
   const [isVaultOpen, setIsVaultOpen] = useState(false);
+  const [isReviewDrawerOpen, setIsReviewDrawerOpen] = useState(false);
+  const [isWeaveModalOpen, setIsWeaveModalOpen] = useState(false);
+  const [weaveInitialPrompt, setWeaveInitialPrompt] = useState<string>('');
+  const [slidesModalNode, setSlidesModalNode] = useState<GraphNode | null>(null);
   const [isLoading, setIsLoading] = useState(false);
 
-  // Graph state
+  // Graph display state
   const canvasRef = useRef<KnowledgeGraphCanvasHandle | null>(null);
   const [layoutMode, setLayoutMode] = useState<LayoutMode>('dag');
   const [difficulty, setDifficulty] = useState<DifficultyLevel>('intermediate');
@@ -67,16 +75,36 @@ export const App: React.FC = () => {
   const [colorMode, setColorMode] = useState<'default' | 'heatmap'>('default');
   const [shortestPathResult, setShortestPathResult] = useState<ShortestPathResult | null>(null);
   const [showMiniMap, setShowMiniMap] = useState<boolean>(true);
-  const [isReviewDrawerOpen, setIsReviewDrawerOpen] = useState(false);
   const [dueReviewCount, setDueReviewCount] = useState<number>(0);
   const [communities, setCommunities] = useState<CommunityGroupInfo[]>([]);
   const [selectedCommunityId, setSelectedCommunityId] = useState<number | null>(null);
   const [isAutoOrganizing, setIsAutoOrganizing] = useState<boolean>(false);
 
+  // Navigation History hook
+  const {
+    history,
+    historyIndex,
+    isLinkCopied,
+    setHistoryIndex,
+    pushHistory,
+    resetHistory,
+    removeNodeFromHistory,
+    handleHistoryBack,
+    handleHistoryForward,
+    handleNavigateHistory,
+    handleCopyDeepLink,
+  } = useNavigationHistory(
+    activeTopicId,
+    graphData,
+    inspectorTab,
+    targetSection,
+    setSelectedNode
+  );
+
   const handleSelectNode = useCallback(
     (
       n: GraphNode | null,
-      tab?: 'notes' | 'questions' | 'quiz' | 'connections',
+      tab?: InspectorTab,
       section?: string
     ) => {
       setSelectedNode(n);
@@ -87,21 +115,7 @@ export const App: React.FC = () => {
       setTargetSection(section);
 
       if (n) {
-        setHistory((prev) => {
-          const nextItem: BreadcrumbItem = {
-            id: n.id,
-            title: n.title,
-            node_type: n.node_type,
-            mastery_score: n.mastery_score,
-          };
-          const upToCurrent = historyIndex >= 0 ? prev.slice(0, historyIndex + 1) : [];
-          if (upToCurrent.length > 0 && upToCurrent[upToCurrent.length - 1].id === n.id) {
-            return upToCurrent;
-          }
-          return [...upToCurrent, nextItem];
-        });
-        setHistoryIndex((prev) => (prev >= 0 ? prev + 1 : 0));
-
+        pushHistory(n);
         updateUrlHash({
           topicId: activeTopicId || undefined,
           nodeId: n.id,
@@ -114,74 +128,8 @@ export const App: React.FC = () => {
         });
       }
     },
-    [activeTopicId, historyIndex, inspectorTab]
+    [activeTopicId, inspectorTab, pushHistory]
   );
-
-  const handleHistoryBack = useCallback(() => {
-    if (historyIndex > 0) {
-      const targetIdx = historyIndex - 1;
-      const item = history[targetIdx];
-      const n = graphData?.nodes.find((node) => node.id === item.id) || null;
-      setSelectedNode(n);
-      setHistoryIndex(targetIdx);
-      updateUrlHash({
-        topicId: activeTopicId || undefined,
-        nodeId: n?.id,
-        tab: inspectorTab,
-      });
-    } else if (historyIndex === 0) {
-      setSelectedNode(null);
-      setHistoryIndex(-1);
-      updateUrlHash({
-        topicId: activeTopicId || undefined,
-      });
-    }
-  }, [history, historyIndex, graphData, activeTopicId, inspectorTab]);
-
-  const handleHistoryForward = useCallback(() => {
-    if (historyIndex < history.length - 1) {
-      const targetIdx = historyIndex + 1;
-      const item = history[targetIdx];
-      const n = graphData?.nodes.find((node) => node.id === item.id) || null;
-      setSelectedNode(n);
-      setHistoryIndex(targetIdx);
-      updateUrlHash({
-        topicId: activeTopicId || undefined,
-        nodeId: n?.id,
-        tab: inspectorTab,
-      });
-    }
-  }, [history, historyIndex, graphData, activeTopicId, inspectorTab]);
-
-  const handleNavigateHistory = useCallback(
-    (idx: number) => {
-      if (idx >= 0 && idx < history.length) {
-        const item = history[idx];
-        const n = graphData?.nodes.find((node) => node.id === item.id) || null;
-        setSelectedNode(n);
-        setHistoryIndex(idx);
-        updateUrlHash({
-          topicId: activeTopicId || undefined,
-          nodeId: n?.id,
-          tab: inspectorTab,
-        });
-      }
-    },
-    [history, graphData, activeTopicId, inspectorTab]
-  );
-
-  const handleCopyDeepLink = useCallback(async () => {
-    const success = await copyDeepLinkToClipboard({
-      topicId: activeTopicId || undefined,
-      nodeId: selectedNode?.id,
-      tab: inspectorTab,
-      section: targetSection,
-    });
-    if (success) {
-      setIsLinkCopied(true);
-      setTimeout(() => setIsLinkCopied(false), 2000);
-    }
-  }, [activeTopicId, selectedNode, inspectorTab, targetSection]);
 
   const refreshReviewDueCount = useCallback(async (topicId: string) => {
     try {
@@ -196,7 +144,7 @@ export const App: React.FC = () => {
     async (
       topicId: string,
       initialNodeId?: string,
-      initialTab?: 'notes' | 'questions' | 'quiz' | 'connections',
+      initialTab?: InspectorTab,
       initialSection?: string
     ) => {
       setIsLoading(true);
@@ -214,20 +162,7 @@ export const App: React.FC = () => {
         if (initialTab) setInspectorTab(initialTab);
         if (initialSection) setTargetSection(initialSection);
 
-        if (nodeToSelect) {
-          setHistory([
-            {
-              id: nodeToSelect.id,
-              title: nodeToSelect.title,
-              node_type: nodeToSelect.node_type,
-              mastery_score: nodeToSelect.mastery_score,
-            },
-          ]);
-          setHistoryIndex(0);
-        } else {
-          setHistory([]);
-          setHistoryIndex(-1);
-        }
+        resetHistory(nodeToSelect);
 
         updateUrlHash(
           {
@@ -253,10 +188,9 @@ export const App: React.FC = () => {
         setIsLoading(false);
       }
     },
-    [inspectorTab, refreshReviewDueCount]
+    [inspectorTab, refreshReviewDueCount, resetHistory]
   );
 
-  // Load topics from SQLite on initial mount and check URL hash
   const loadTopics = useCallback(async () => {
     try {
       const data = await fetchTopics();
@@ -277,7 +211,7 @@ export const App: React.FC = () => {
     loadTopics();
   }, [loadTopics]);
 
-  // Listen to external hash changes (e.g. browser back/forward or deep links)
+  // URL Hash change listener
   useEffect(() => {
     const handleHashChange = () => {
       const state = parseUrlHash();
@@ -309,45 +243,66 @@ export const App: React.FC = () => {
     return () => window.removeEventListener('hashchange', handleHashChange);
   }, [activeTopicId, selectedNode, graphData, inspectorTab, targetSection, loadGraph]);
 
-  const handleDeleteNode = useCallback(async (nodeId: string) => {
-    try {
-      const res = await deleteNode(nodeId);
-      if (res.full_graph) {
-        setGraphData(res.full_graph);
-      } else {
-        setGraphData((prev) => {
-          if (!prev) return prev;
-          return {
-            ...prev,
-            nodes: prev.nodes.filter((n) => n.id !== nodeId),
-            edges: prev.edges.filter((e) => e.source_id !== nodeId && e.target_id !== nodeId),
-            quizzes: prev.quizzes.filter((q) => q.node_id !== nodeId),
-            inquiries: prev.inquiries.filter((inq) => inq.node_id !== nodeId),
-          };
-        });
-      }
-      setSelectedNode((prev) => (prev?.id === nodeId ? null : prev));
-      setHistory((prev) => prev.filter((item) => item.id !== nodeId));
-      setHistoryIndex((prev) => Math.max(-1, prev - 1));
-    } catch (err) {
-      console.error('Failed to delete node:', err);
-    }
-  }, []);
-
-  const handleDetachQuiz = useCallback(async (quizId: string) => {
-    try {
-      const res = await detachQuizToNode(quizId);
-      if (res.full_graph) {
-        setGraphData(res.full_graph);
-        const newNode = res.full_graph.nodes.find((n) => n.id === res.new_node_id);
-        if (newNode) {
-          handleSelectNode(newNode, 'questions');
+  const handleDeleteNode = useCallback(
+    async (nodeId: string) => {
+      try {
+        const res = await deleteNode(nodeId);
+        if (res.full_graph) {
+          setGraphData(res.full_graph);
+        } else {
+          setGraphData((prev) => {
+            if (!prev) return prev;
+            return {
+              ...prev,
+              nodes: prev.nodes.filter((n) => n.id !== nodeId),
+              edges: prev.edges.filter((e) => e.source_id !== nodeId && e.target_id !== nodeId),
+              quizzes: prev.quizzes.filter((q) => q.node_id !== nodeId),
+              inquiries: prev.inquiries.filter((inq) => inq.node_id !== nodeId),
+            };
+          });
         }
+        setSelectedNode((prev) => (prev?.id === nodeId ? null : prev));
+        removeNodeFromHistory(nodeId);
+      } catch (err) {
+        console.error('Failed to delete node:', err);
       }
-    } catch (err) {
-      console.error('Failed to detach quiz question to node:', err);
-    }
-  }, [handleSelectNode]);
+    },
+    [removeNodeFromHistory]
+  );
+
+  // Global Keyboard Shortcuts hook
+  useKeyboardShortcuts({
+    isSpotlightOpen,
+    isVaultOpen,
+    hasSelectedNode: !!selectedNode,
+    onToggleSpotlight: () => setIsSpotlightOpen((prev) => !prev),
+    onCloseSpotlight: () => setIsSpotlightOpen(false),
+    onCloseVault: () => setIsVaultOpen(false),
+    onClearSelection: () => {
+      setSelectedNode(null);
+      setHistoryIndex(-1);
+      updateUrlHash({ topicId: activeTopicId || undefined });
+    },
+    onDeleteSelectedNode: selectedNode ? () => handleDeleteNode(selectedNode.id) : undefined,
+  });
+
+  const handleDetachQuiz = useCallback(
+    async (quizId: string) => {
+      try {
+        const res = await detachQuizToNode(quizId);
+        if (res.full_graph) {
+          setGraphData(res.full_graph);
+          const newNode = res.full_graph.nodes.find((n) => n.id === res.new_node_id);
+          if (newNode) {
+            handleSelectNode(newNode, 'questions');
+          }
+        }
+      } catch (err) {
+        console.error('Failed to detach quiz question to node:', err);
+      }
+    },
+    [handleSelectNode]
+  );
 
   const handleNodePositionChange = useCallback(async (nodeId: string, posX: number, posY: number) => {
     setGraphData((prev) => {
@@ -364,50 +319,62 @@ export const App: React.FC = () => {
     }
   }, []);
 
-  const handleFindShortestPath = useCallback(async (sourceId: string, targetId: string) => {
-    if (!activeTopicId) return;
-    try {
-      const res = await findShortestPath(activeTopicId, sourceId, targetId);
-      setShortestPathResult(res);
-    } catch (err) {
-      console.error('Failed to find shortest path:', err);
-    }
-  }, [activeTopicId]);
+  const handleFindShortestPath = useCallback(
+    async (sourceId: string, targetId: string) => {
+      if (!activeTopicId) return;
+      try {
+        const res = await findShortestPath(activeTopicId, sourceId, targetId);
+        setShortestPathResult(res);
+      } catch (err) {
+        console.error('Failed to find shortest path:', err);
+      }
+    },
+    [activeTopicId]
+  );
 
   const handleClearShortestPath = useCallback(() => {
     setShortestPathResult(null);
   }, []);
 
-  const handleTopicImported = useCallback(async (importedTopicId: string) => {
-    await loadTopics();
-    await loadGraph(importedTopicId);
-  }, [loadTopics, loadGraph]);
+  const handleTopicImported = useCallback(
+    async (importedTopicId: string) => {
+      await loadTopics();
+      await loadGraph(importedTopicId);
+    },
+    [loadTopics, loadGraph]
+  );
 
-  const handleSelectEdge = useCallback((edge: GraphEdge) => {
-    if (!graphData) return;
-    const target = graphData.nodes.find((n) => n.id === edge.target_id);
-    if (target) {
-      handleSelectNode(target, 'connections');
-    }
-  }, [graphData, handleSelectNode]);
-
-  const handleToggleDone = useCallback(async (node: GraphNode) => {
-    try {
-      const updated = await toggleNodeDone(node.id);
-      setGraphData((prev) => {
-        if (!prev) return prev;
-        return {
-          ...prev,
-          nodes: prev.nodes.map((n) => (n.id === node.id ? { ...n, is_done: updated.is_done } : n)),
-        };
-      });
-      if (selectedNode && selectedNode.id === node.id) {
-        setSelectedNode((prev) => (prev ? { ...prev, is_done: updated.is_done } : null));
+  const handleSelectEdge = useCallback(
+    (edge: GraphEdge) => {
+      if (!graphData) return;
+      const target = graphData.nodes.find((n) => n.id === edge.target_id);
+      if (target) {
+        handleSelectNode(target, 'connections');
       }
-    } catch (err) {
-      console.error('Failed to toggle node done status:', err);
-    }
-  }, [selectedNode]);
+    },
+    [graphData, handleSelectNode]
+  );
+
+  const handleToggleDone = useCallback(
+    async (node: GraphNode) => {
+      try {
+        const updated = await toggleNodeDone(node.id);
+        setGraphData((prev) => {
+          if (!prev) return prev;
+          return {
+            ...prev,
+            nodes: prev.nodes.map((n) => (n.id === node.id ? { ...n, is_done: updated.is_done } : n)),
+          };
+        });
+        if (selectedNode && selectedNode.id === node.id) {
+          setSelectedNode((prev) => (prev ? { ...prev, is_done: updated.is_done } : null));
+        }
+      } catch (err) {
+        console.error('Failed to toggle node done status:', err);
+      }
+    },
+    [selectedNode]
+  );
 
   const handleAutoOrganize = useCallback(async () => {
     if (!activeTopicId || isAutoOrganizing) return;
@@ -432,33 +399,6 @@ export const App: React.FC = () => {
     }
   }, [activeTopicId, isAutoOrganizing, selectedNode]);
 
-  // Keyboard shortcuts
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
-        e.preventDefault();
-        setIsSpotlightOpen((prev) => !prev);
-      } else if (e.key === 'Escape') {
-        if (isSpotlightOpen) setIsSpotlightOpen(false);
-        else if (isVaultOpen) setIsVaultOpen(false);
-        else if (selectedNode) {
-          setSelectedNode(null);
-          setHistoryIndex(-1);
-          updateUrlHash({ topicId: activeTopicId || undefined });
-        }
-      } else if (e.key === 'Delete' || e.key === 'Backspace') {
-        const tag = (document.activeElement?.tagName || '').toLowerCase();
-        const isEditable = (document.activeElement as HTMLElement)?.isContentEditable;
-        if (tag !== 'input' && tag !== 'textarea' && !isEditable && selectedNode) {
-          e.preventDefault();
-          handleDeleteNode(selectedNode.id);
-        }
-      }
-    };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isSpotlightOpen, isVaultOpen, selectedNode, handleDeleteNode, activeTopicId]);
-
   const handleCreateTopic = async (topicQuery: string, chosenDifficulty: DifficultyLevel) => {
     setIsLoading(true);
     try {
@@ -468,7 +408,6 @@ export const App: React.FC = () => {
       setDifficulty(chosenDifficulty);
       setIsSpotlightOpen(false);
       await loadTopics();
-      // Select the root node if available
       const rootNode = data.nodes.find((n) => n.node_type === 'concept');
       if (rootNode) {
         handleSelectNode(rootNode);
@@ -488,8 +427,7 @@ export const App: React.FC = () => {
         setGraphData(null);
         setActiveTopicId(null);
         setSelectedNode(null);
-        setHistory([]);
-        setHistoryIndex(-1);
+        resetHistory(null);
         updateUrlHash({});
       }
       await loadTopics();
@@ -505,7 +443,16 @@ export const App: React.FC = () => {
 
   // Node '+' popover actions
   const handleOpenAction = async (
-    action: 'add_question' | 'add_note' | 'generate_quiz' | 'expand_subtopics' | 'decompose_question' | 'subquestions' | 'tested_concepts',
+    action:
+      | 'add_question'
+      | 'add_note'
+      | 'generate_quiz'
+      | 'expand_subtopics'
+      | 'decompose_question'
+      | 'subquestions'
+      | 'tested_concepts'
+      | 'attach_resource'
+      | 'generate_visualizations',
     node: GraphNode
   ) => {
     handleSelectNode(node);
@@ -516,6 +463,10 @@ export const App: React.FC = () => {
       setInspectorTab('notes');
     } else if (action === 'generate_quiz') {
       setInspectorTab('quiz');
+    } else if (action === 'attach_resource') {
+      setInspectorTab('resources');
+    } else if (action === 'generate_visualizations') {
+      setInspectorTab('visualizations');
     } else if (action === 'expand_subtopics') {
       setIsLoading(true);
       try {
@@ -563,6 +514,118 @@ export const App: React.FC = () => {
     }
   };
 
+  const handleBridgeEdge = async (
+    edgeId: string,
+    bridgeCount: number,
+    bridgeDiff: DifficultyLevel,
+    focusNote?: string
+  ) => {
+    setIsLoading(true);
+    try {
+      const res = await bridgeEdgeTransition(edgeId, {
+        bridge_count: bridgeCount,
+        difficulty: bridgeDiff,
+        focus_note: focusNote,
+      });
+      setGraphData(res.full_graph);
+      if (res.created_node_ids && res.created_node_ids.length > 0) {
+        const firstNode = res.full_graph.nodes.find((n) => n.id === res.created_node_ids[0]);
+        if (firstNode) handleSelectNode(firstNode, 'notes');
+      }
+      if (activeTopicId) {
+        fetchTopicCommunities(activeTopicId).then((c) => setCommunities(c.communities)).catch(() => {});
+      }
+    } catch (err: any) {
+      console.error('Failed to bridge edge:', err);
+      alert(err.message || 'Failed to bridge edge transition');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleInsertNodeOnEdge = async (
+    edgeId: string,
+    title: string,
+    nodeType: string,
+    summary?: string,
+    relSourceToNew?: string,
+    relNewToTarget?: string,
+    lblSourceToNew?: string,
+    lblNewToTarget?: string
+  ) => {
+    setIsLoading(true);
+    try {
+      const res = await insertNodeOnEdge(edgeId, {
+        title,
+        node_type: nodeType,
+        summary,
+        relation_source_to_new: relSourceToNew,
+        relation_new_to_target: relNewToTarget,
+        label_source_to_new: lblSourceToNew,
+        label_new_to_target: lblNewToTarget,
+      });
+      setGraphData(res.full_graph);
+      const newNode = res.full_graph.nodes.find((n) => n.id === res.new_node_id);
+      if (newNode) handleSelectNode(newNode, 'notes');
+      if (activeTopicId) {
+        fetchTopicCommunities(activeTopicId).then((c) => setCommunities(c.communities)).catch(() => {});
+      }
+    } catch (err: any) {
+      console.error('Failed to insert node on edge:', err);
+      alert(err.message || 'Failed to insert node on edge');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleDeleteEdge = async (edgeId: string) => {
+    setIsLoading(true);
+    try {
+      await deleteEdge(edgeId);
+      if (activeTopicId) {
+        const fresh = await fetchTopicGraph(activeTopicId);
+        setGraphData(fresh);
+        fetchTopicCommunities(activeTopicId).then((c) => setCommunities(c.communities)).catch(() => {});
+      }
+    } catch (err: any) {
+      console.error('Failed to delete edge:', err);
+      alert(err.message || 'Failed to delete edge');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleUpdateEdge = async (edgeId: string, relationType: string, label: string) => {
+    setIsLoading(true);
+    try {
+      await updateEdge(edgeId, {
+        relation_type: relationType,
+        edge_type: relationType,
+        label,
+      });
+      if (activeTopicId) {
+        const fresh = await fetchTopicGraph(activeTopicId);
+        setGraphData(fresh);
+      }
+    } catch (err: any) {
+      console.error('Failed to update edge:', err);
+      alert(err.message || 'Failed to update edge');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleWeaveSuccess = (res: GraphWeaveResponse) => {
+    setGraphData(res.full_graph);
+    const targetNode = res.full_graph.nodes.find((n) => n.id === res.primary_node_id);
+    if (targetNode) {
+      handleSelectNode(targetNode, 'notes');
+    }
+    if (activeTopicId) {
+      fetchTopicCommunities(activeTopicId).then((c) => setCommunities(c.communities)).catch(() => {});
+    }
+  };
+
   const handleToggleFilter = (type: NodeType) => {
     setActiveFilters((prev) => {
       const next = new Set(prev);
@@ -600,6 +663,10 @@ export const App: React.FC = () => {
         dueReviewCount={dueReviewCount}
         activeTopicTitle={graphData?.topic.title}
         hasActiveTopic={!!graphData}
+        onOpenWeave={() => {
+          setWeaveInitialPrompt('');
+          setIsWeaveModalOpen(true);
+        }}
       />
 
       {/* Main Canvas Area */}
@@ -631,7 +698,7 @@ export const App: React.FC = () => {
                   setHistoryIndex(-1);
                   updateUrlHash({ topicId: activeTopicId || undefined });
                 }}
-                onCopyLink={handleCopyDeepLink}
+                onCopyLink={() => handleCopyDeepLink(selectedNode?.id)}
                 linkCopied={isLinkCopied}
               />
             </div>
@@ -662,6 +729,10 @@ export const App: React.FC = () => {
               onSelectCommunity={setSelectedCommunityId}
               onAutoOrganize={handleAutoOrganize}
               isAutoOrganizing={isAutoOrganizing}
+              onOpenWeave={() => {
+                setWeaveInitialPrompt('');
+                setIsWeaveModalOpen(true);
+              }}
             />
 
             {/* Interactive 2D Canvas Engine */}
@@ -671,9 +742,7 @@ export const App: React.FC = () => {
               edges={graphData.edges}
               layoutMode={layoutMode}
               selectedNodeId={selectedNode?.id}
-              onSelectNode={(n) => {
-                handleSelectNode(n);
-              }}
+              onSelectNode={handleSelectNode}
               onToggleDone={handleToggleDone}
               onOpenAction={handleOpenAction}
               difficulty={difficulty}
@@ -681,18 +750,18 @@ export const App: React.FC = () => {
               activeFilters={activeFilters}
               onDeleteNode={handleDeleteNode}
               onNodePositionChange={handleNodePositionChange}
-              onSynthesizeNote={(n) => {
-                handleSelectNode(n, 'notes');
-              }}
+              onSynthesizeNote={(n) => handleSelectNode(n, 'notes')}
               onDecomposeQuestion={async (nodeId) => {
                 const targetNode = graphData.nodes.find((n) => n.id === nodeId);
                 if (targetNode) {
                   await handleOpenAction('decompose_question', targetNode);
                 }
               }}
-              onOpenQuiz={(n) => {
-                handleSelectNode(n, 'quiz');
-              }}
+              onOpenQuiz={(n) => handleSelectNode(n, 'quiz')}
+              resources={graphData.resources || []}
+              onOpenResources={(n) => handleSelectNode(n, 'resources')}
+              onOpenVisualizations={(n) => handleSelectNode(n, 'visualizations')}
+              onOpenSlides={(n) => setSlidesModalNode(n)}
               lensMode={lensMode}
               shortestPath={shortestPathResult}
               colorMode={colorMode}
@@ -703,10 +772,14 @@ export const App: React.FC = () => {
                   ? new Set(communities.find((c) => c.community_id === selectedCommunityId)?.node_ids || [])
                   : null
               }
+              onBridgeEdge={handleBridgeEdge}
+              onInsertNodeOnEdge={handleInsertNodeOnEdge}
+              onDeleteEdge={handleDeleteEdge}
+              onUpdateEdge={handleUpdateEdge}
             />
           </>
         ) : (
-          /* Empty State: Prompt in the exact middle */
+          /* Empty State */
           <div
             style={{
               display: 'flex',
@@ -728,6 +801,10 @@ export const App: React.FC = () => {
                   handleSelectNode(n, targetTab);
                 }
               }}
+              onOpenWeave={(q) => {
+                setWeaveInitialPrompt(q);
+                setIsWeaveModalOpen(true);
+              }}
             />
           </div>
         )}
@@ -741,10 +818,64 @@ export const App: React.FC = () => {
           edges={graphData.edges}
           quizzes={graphData.quizzes}
           inquiries={graphData.inquiries}
+          resources={graphData.resources || []}
+          visualizations={graphData.visualizations || []}
           difficulty={difficulty}
           initialTab={inspectorTab}
           targetSection={targetSection}
           onToggleDone={handleToggleDone}
+          onResourceAdded={(newRes) => {
+            setGraphData((prev) => {
+              if (!prev) return prev;
+              const currentRes = prev.resources || [];
+              return {
+                ...prev,
+                resources: [...currentRes, newRes],
+              };
+            });
+          }}
+          onResourceDeleted={(resId) => {
+            setGraphData((prev) => {
+              if (!prev) return prev;
+              return {
+                ...prev,
+                resources: (prev.resources || []).filter((r) => r.id !== resId),
+              };
+            });
+          }}
+          onVisualizationAdded={(newVis) => {
+            setGraphData((prev) => {
+              if (!prev) return prev;
+              const currentVis = prev.visualizations || [];
+              const exists = currentVis.some((v) => v.id === newVis.id);
+              return {
+                ...prev,
+                visualizations: exists
+                  ? currentVis.map((v) => (v.id === newVis.id ? newVis : v))
+                  : [...currentVis, newVis],
+              };
+            });
+          }}
+          onVisualizationUpdated={(updatedVis) => {
+            setGraphData((prev) => {
+              if (!prev) return prev;
+              const currentVis = prev.visualizations || [];
+              return {
+                ...prev,
+                visualizations: currentVis.map((v) => (v.id === updatedVis.id ? updatedVis : v)),
+              };
+            });
+          }}
+          onVisualizationDeleted={(visId) => {
+            setGraphData((prev) => {
+              if (!prev) return prev;
+              const currentVis = prev.visualizations || [];
+              return {
+                ...prev,
+                visualizations: currentVis.filter((v) => v.id !== visId),
+              };
+            });
+          }}
           onClose={() => {
             setSelectedNode(null);
             setHistoryIndex(-1);
@@ -824,65 +955,31 @@ export const App: React.FC = () => {
         />
       )}
 
-      {/* Spotlight Overlay Modal (when toggled via Cmd/Ctrl+K or Ribbon) */}
-      {isSpotlightOpen && (
-        <div
-          style={{
-            position: 'fixed',
-            inset: 0,
-            backgroundColor: 'rgba(0, 0, 0, 0.65)',
-            backdropFilter: 'blur(4px)',
-            zIndex: 70,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            padding: '20px',
-          }}
-          onClick={() => setIsSpotlightOpen(false)}
-        >
-          <div onClick={(e) => e.stopPropagation()}>
-            <SpotlightSearch
-              onSearch={handleCreateTopic}
-              isLoading={isLoading}
-              onClose={() => setIsSpotlightOpen(false)}
-              isOverlay={true}
-              activeTopicId={activeTopicId}
-              activeTopicTitle={graphData?.topic.title}
-              onSelectNode={(nodeId, targetTab) => {
-                const n = graphData?.nodes.find((node) => node.id === nodeId);
-                if (n) {
-                  handleSelectNode(n, targetTab);
-                }
-              }}
-            />
-          </div>
-        </div>
-      )}
-
-      {/* Vault Manager Drawer */}
-      <VaultDrawer
-        isOpen={isVaultOpen}
-        topics={topics}
-        activeTopicId={activeTopicId || undefined}
-        onSelectTopic={loadGraph}
-        onDeleteTopic={handleDeleteTopic}
-        onExportTopic={(id) => {
-          window.location.href = exportObsidianVaultUrl(id);
+      {/* Global Modals, Drawers, and Overlays */}
+      <AppModals
+        isSpotlightOpen={isSpotlightOpen}
+        onCloseSpotlight={() => setIsSpotlightOpen(false)}
+        isLoading={isLoading}
+        activeTopicId={activeTopicId}
+        graphData={graphData}
+        handleCreateTopic={handleCreateTopic}
+        handleSelectNode={handleSelectNode}
+        onOpenWeaveWithPrompt={(q) => {
+          setWeaveInitialPrompt(q);
+          setIsWeaveModalOpen(true);
         }}
-        onTopicImported={handleTopicImported}
-        onClose={() => setIsVaultOpen(false)}
-        onNewTopic={() => {
+        isVaultOpen={isVaultOpen}
+        topics={topics}
+        loadGraph={loadGraph}
+        handleDeleteTopic={handleDeleteTopic}
+        handleTopicImported={handleTopicImported}
+        onCloseVault={() => setIsVaultOpen(false)}
+        onOpenSpotlightFromVault={() => {
           setIsVaultOpen(false);
           setIsSpotlightOpen(true);
         }}
-      />
-
-      {/* Spaced Repetition Review Deck */}
-      <ReviewDrawer
-        isOpen={isReviewDrawerOpen}
-        topicId={activeTopicId || undefined}
-        topicTitle={graphData?.topic.title}
-        onClose={() => {
+        isReviewDrawerOpen={isReviewDrawerOpen}
+        onCloseReviewDrawer={() => {
           setIsReviewDrawerOpen(false);
           if (activeTopicId) refreshReviewDueCount(activeTopicId);
         }}
@@ -901,6 +998,13 @@ export const App: React.FC = () => {
             };
           });
         }}
+        slidesModalNode={slidesModalNode}
+        difficulty={difficulty}
+        onCloseSlides={() => setSlidesModalNode(null)}
+        isWeaveModalOpen={isWeaveModalOpen}
+        weaveInitialPrompt={weaveInitialPrompt}
+        onCloseWeave={() => setIsWeaveModalOpen(false)}
+        onWeaveSuccess={handleWeaveSuccess}
       />
     </div>
   );

@@ -1,0 +1,104 @@
+/**
+ * Variables & Design Tokens
+ * Obsidian Dark Knowledge Engine Theme
+ */
+
+:root {
+  /* Canvas & Background Surfaces */
+  --bg-canvas: #161618;
+  --bg-ribbon: #121214;
+  --bg-panel: #1c1c1f;
+  --bg-panel-secondary: #19191b;
+  --bg-card: #222226;
+  --bg-card-hover: #29292e;
+  --bg-card-active: #323238;
+  --bg-input: #1f1f23;
+  --bg-input-focus: #18181b;
+  --bg-overlay: rgba(10, 10, 12, 0.7);
+
+  /* Borders & Dividers */
+  --border-subtle: #2b2b32;
+  --border-active: #3e3e4a;
+  --border-focus: #8b7bf5;
+  --border-highlight: rgba(139, 123, 245, 0.4);
+
+  /* Typography Colors */
+  --text-primary: #ededec;
+  --text-normal: #ededec;
+  --text-secondary: #9c9ca3;
+  --text-muted: #64646c;
+  --text-disabled: #44444a;
+
+  /* Accent & Brand Colors */
+  --accent-purple: #8b7bf5;
+  --accent-purple-glow: rgba(139, 123, 245, 0.25);
+  --accent-primary: #8b7bf5;
+  --accent-primary-hover: #9e91f7;
+  --accent-secondary: #7dd3fc;
+  --accent-cyan: #38bdf8;
+  --accent-indigo: #6366f1;
+  --accent-indigo-subtle: rgba(99, 102, 241, 0.12);
+  --accent-indigo-border: rgba(99, 102, 241, 0.35);
+
+  /* Status Colors */
+  --error-red: #ef4444;
+  --error-red-subtle: rgba(239, 68, 68, 0.15);
+  --error-red-border: rgba(239, 68, 68, 0.35);
+  --success-green: #10b981;
+  --success-green-subtle: rgba(16, 185, 129, 0.15);
+  --warning-amber: #f59e0b;
+  --warning-amber-subtle: rgba(245, 158, 11, 0.15);
+
+  /* Semantic Muted Spot Pastels for Nodes & Badges */
+  --tag-concept-bg: #231d36;
+  --tag-concept-text: #bfa4f8;
+  --tag-concept-border: #3f3366;
+
+  --tag-prereq-bg: #2b181a;
+  --tag-prereq-text: #f87171;
+  --tag-prereq-border: #522327;
+
+  --tag-subtopic-bg: #231d36;
+  --tag-subtopic-text: #bfa4f8;
+  --tag-subtopic-border: #3f3366;
+
+  --tag-note-bg: #162619;
+  --tag-note-text: #6ee7b7;
+  --tag-note-border: #244a2b;
+
+  --tag-question-bg: #162338;
+  --tag-question-text: #7dd3fc;
+  --tag-question-border: #25456b;
+
+  --tag-quiz-bg: #2d2412;
+  --tag-quiz-text: #fde047;
+  --tag-quiz-border: #594518;
+
+  /* Fonts */
+  --font-sans: 'Geist', -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Helvetica Neue', sans-serif;
+  --font-serif: 'Newsreader', Georgia, serif;
+  --font-mono: 'Geist Mono', 'SF Mono', Menlo, Consolas, monospace;
+
+  /* Typography Scale Tokens */
+  --font-size-2xs: 11.5px;
+  --font-size-xs: 12.5px;
+  --font-size-sm: 13.5px;
+  --font-size-base: 15px;
+  --font-size-md: 16px;
+  --font-size-lg: 17.5px;
+  --font-size-xl: 19px;
+  --font-size-2xl: 22px;
+  --font-size-3xl: 26px;
+
+  /* Shadows */
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.3);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.45);
+  --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.6);
+  --shadow-popover: 0 16px 40px rgba(0, 0, 0, 0.75), 0 0 0 1px rgba(255, 255, 255, 0.05);
+
+  /* Radii */
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 8px;
+  --radius-xl: 12px;
+}

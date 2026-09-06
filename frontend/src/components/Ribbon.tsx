@@ -6,6 +6,7 @@ interface RibbonProps {
   onFitGraph: () => void;
   onExportVault: () => void;
   onOpenReviewQueue?: () => void;
+  onOpenWeave?: () => void;
   dueReviewCount?: number;
   activeTopicTitle?: string;
   hasActiveTopic: boolean;
@@ -17,6 +18,7 @@ export const Ribbon: React.FC<RibbonProps> = ({
   onFitGraph,
   onExportVault,
   onOpenReviewQueue,
+  onOpenWeave,
   dueReviewCount,
   activeTopicTitle,
   hasActiveTopic,
@@ -76,6 +78,20 @@ export const Ribbon: React.FC<RibbonProps> = ({
           </button>
         )}
 
+        {/* Weave Concept into Graph */}
+        {hasActiveTopic && onOpenWeave && (
+          <button
+            className="obsidian-btn-subtle"
+            title="Weave Question/Concept into Graph"
+            onClick={onOpenWeave}
+            style={{ color: 'var(--accent-primary)' }}
+          >
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="m12 3-1.9 5.8a2 2 0 0 1-1.3 1.3L3 12l5.8 1.9a2 2 0 0 1 1.3 1.3L12 21l1.9-5.8a2 2 0 0 1 1.3-1.3L21 12l-5.8-1.9a2 2 0 0 1-1.3-1.3z" />
+            </svg>
+          </button>
+        )}
+
         {/* Spaced Repetition Review Queue */}
         {hasActiveTopic && onOpenReviewQueue && (
           <button
@@ -94,18 +110,18 @@ export const Ribbon: React.FC<RibbonProps> = ({
               <span
                 style={{
                   position: 'absolute',
-                  top: '-3px',
-                  right: '-3px',
+                  top: '-4px',
+                  right: '-4px',
                   backgroundColor: '#ef4444',
                   color: '#ffffff',
                   borderRadius: '10px',
-                  fontSize: '9px',
+                  fontSize: '11px',
                   fontFamily: 'var(--font-mono)',
                   fontWeight: 700,
-                  padding: '1px 4px',
-                  minWidth: '14px',
+                  padding: '1px 5px',
+                  minWidth: '16px',
                   textAlign: 'center',
-                  lineHeight: '12px',
+                  lineHeight: '13px',
                   border: '1px solid var(--bg-ribbon)',
                 }}
               >

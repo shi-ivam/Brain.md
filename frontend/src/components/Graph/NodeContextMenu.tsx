@@ -8,6 +8,9 @@ interface NodeContextMenuProps {
   onSynthesizeNote?: (node: GraphNode) => void;
   onDecomposeQuestion?: (nodeId: string) => void;
   onOpenQuiz?: (node: GraphNode) => void;
+  onOpenResources?: (node: GraphNode) => void;
+  onOpenVisualizations?: (node: GraphNode) => void;
+  onOpenSlides?: (node: GraphNode) => void;
   onToggleDone?: (node: GraphNode) => void;
   onDeleteNode: (nodeId: string) => void;
   onClose: () => void;
@@ -20,6 +23,9 @@ export const NodeContextMenu: React.FC<NodeContextMenuProps> = ({
   onSynthesizeNote,
   onDecomposeQuestion,
   onOpenQuiz,
+  onOpenResources,
+  onOpenVisualizations,
+  onOpenSlides,
   onToggleDone,
   onDeleteNode,
   onClose,
@@ -80,19 +86,19 @@ export const NodeContextMenu: React.FC<NodeContextMenuProps> = ({
           marginBottom: '3px',
         }}
       >
-        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '2px' }}>
-          <span className={`obsidian-badge badge-${node.node_type}`} style={{ fontSize: '9px', padding: '1px 5px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '3px' }}>
+          <span className={`obsidian-badge badge-${node.node_type}`} style={{ fontSize: '11px', padding: '2px 6px' }}>
             {node.node_type.toUpperCase()}
           </span>
           {node.difficulty && (
-            <span style={{ fontSize: '9px', fontFamily: 'var(--font-mono)', color: 'var(--text-muted)' }}>
+            <span style={{ fontSize: '11px', fontFamily: 'var(--font-mono)', color: 'var(--text-muted)' }}>
               {node.difficulty.toUpperCase()}
             </span>
           )}
         </div>
         <div
           style={{
-            fontSize: '12px',
+            fontSize: '13.5px',
             fontWeight: 500,
             color: 'var(--text-primary)',
             whiteSpace: 'nowrap',
@@ -114,8 +120,8 @@ export const NodeContextMenu: React.FC<NodeContextMenuProps> = ({
         className="obsidian-btn-subtle"
         style={{
           justifyContent: 'flex-start',
-          fontSize: '12px',
-          padding: '6px 8px',
+          fontSize: '13.5px',
+          padding: '7px 9px',
           borderRadius: '4px',
           gap: '8px',
           width: '100%',
@@ -138,8 +144,8 @@ export const NodeContextMenu: React.FC<NodeContextMenuProps> = ({
           className="obsidian-btn-subtle"
           style={{
             justifyContent: 'flex-start',
-            fontSize: '12px',
-            padding: '6px 8px',
+            fontSize: '13.5px',
+            padding: '7px 9px',
             borderRadius: '4px',
             gap: '8px',
             width: '100%',
@@ -163,8 +169,8 @@ export const NodeContextMenu: React.FC<NodeContextMenuProps> = ({
           className="obsidian-btn-subtle"
           style={{
             justifyContent: 'flex-start',
-            fontSize: '12px',
-            padding: '6px 8px',
+            fontSize: '13.5px',
+            padding: '7px 9px',
             borderRadius: '4px',
             gap: '8px',
             width: '100%',
@@ -191,8 +197,8 @@ export const NodeContextMenu: React.FC<NodeContextMenuProps> = ({
           className="obsidian-btn-subtle"
           style={{
             justifyContent: 'flex-start',
-            fontSize: '12px',
-            padding: '6px 8px',
+            fontSize: '13.5px',
+            padding: '7px 9px',
             borderRadius: '4px',
             gap: '8px',
             width: '100%',
@@ -216,8 +222,8 @@ export const NodeContextMenu: React.FC<NodeContextMenuProps> = ({
           className="obsidian-btn-subtle"
           style={{
             justifyContent: 'flex-start',
-            fontSize: '12px',
-            padding: '6px 8px',
+            fontSize: '13.5px',
+            padding: '7px 9px',
             borderRadius: '4px',
             gap: '8px',
             width: '100%',
@@ -229,6 +235,85 @@ export const NodeContextMenu: React.FC<NodeContextMenuProps> = ({
             <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z" />
           </svg>
           Synthesize Deep Note
+        </button>
+      )}
+
+      {/* Action: Open Resources */}
+      {onOpenResources && (
+        <button
+          onClick={() => {
+            onOpenResources(node);
+            onClose();
+          }}
+          className="obsidian-btn-subtle"
+          style={{
+            justifyContent: 'flex-start',
+            fontSize: '13.5px',
+            padding: '7px 9px',
+            borderRadius: '4px',
+            gap: '8px',
+            width: '100%',
+            color: '#f87171',
+          }}
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48" />
+          </svg>
+          Attached Resources
+        </button>
+      )}
+
+      {/* Action: Visualizations */}
+      {onOpenVisualizations && (
+        <button
+          onClick={() => {
+            onOpenVisualizations(node);
+            onClose();
+          }}
+          className="obsidian-btn-subtle"
+          style={{
+            justifyContent: 'flex-start',
+            fontSize: '13.5px',
+            padding: '7px 9px',
+            borderRadius: '4px',
+            gap: '8px',
+            width: '100%',
+            color: '#818cf8',
+          }}
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <polygon points="12 2 2 7 12 12 22 7 12 2" />
+            <polyline points="2 17 12 22 22 17" />
+            <polyline points="2 12 12 17 22 12" />
+          </svg>
+          Visualizations & Diagrams
+        </button>
+      )}
+
+      {/* Action: Study Slides */}
+      {onOpenSlides && (
+        <button
+          onClick={() => {
+            onOpenSlides(node);
+            onClose();
+          }}
+          className="obsidian-btn-subtle"
+          style={{
+            justifyContent: 'flex-start',
+            fontSize: '13.5px',
+            padding: '7px 9px',
+            borderRadius: '4px',
+            gap: '8px',
+            width: '100%',
+            color: '#38bdf8',
+          }}
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <rect x="2" y="3" width="20" height="14" rx="2" />
+            <line x1="8" y1="21" x2="16" y2="21" />
+            <line x1="12" y1="17" x2="12" y2="21" />
+          </svg>
+          Study Slides (View / PPTX)
         </button>
       )}
 
@@ -245,8 +330,8 @@ export const NodeContextMenu: React.FC<NodeContextMenuProps> = ({
         className="obsidian-btn-subtle"
         style={{
           justifyContent: 'flex-start',
-          fontSize: '12px',
-          padding: '6px 8px',
+          fontSize: '13.5px',
+          padding: '7px 9px',
           borderRadius: '4px',
           gap: '8px',
           width: '100%',

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { DifficultyLevel, DeepSearchHit } from '../types';
+import { DifficultyLevel, DeepSearchHit, InspectorTab } from '../types';
 import { deepSearchTopic } from '../services/api';
 
 interface SpotlightSearchProps {
@@ -9,7 +9,8 @@ interface SpotlightSearchProps {
   isOverlay?: boolean;
   activeTopicId?: string | null;
   activeTopicTitle?: string;
-  onSelectNode?: (nodeId: string, targetTab?: 'notes' | 'questions' | 'quiz' | 'connections') => void;
+  onSelectNode?: (nodeId: string, targetTab?: InspectorTab) => void;
+  onOpenWeave?: (query: string) => void;
 }
 
 const EXAMPLE_TOPICS = [
@@ -50,10 +51,11 @@ export const SpotlightSearch: React.FC<SpotlightSearchProps> = ({
   activeTopicId,
   activeTopicTitle,
   onSelectNode,
+  onOpenWeave,
 }) => {
   const [topic, setTopic] = useState('');
   const [difficultyIndex, setDifficultyIndex] = useState<number>(1); // default 'intermediate'
-  const [loadingStep, setLoadingStep] = useState('Querying Vertex AI gemini-3.8-flash in global region...');
+  const [loadingStep, setLoadingStep] = useState('Synthesizing knowledge graph...');
 
   // Deep Search state
   const [deepHits, setDeepHits] = useState<DeepSearchHit[]>([]);
@@ -106,7 +108,7 @@ export const SpotlightSearch: React.FC<SpotlightSearchProps> = ({
     // Cycle through descriptive steps while loading
     const interval = setInterval(() => {
       setLoadingStep((prev) => {
-        if (prev.includes('Querying')) return 'Formulating academic ontology & prerequisites...';
+        if (prev.includes('Synthesizing') || prev.includes('Querying')) return 'Formulating academic ontology & prerequisites...';
         if (prev.includes('prerequisites')) return 'Synthesizing core pillars & LaTeX study notes...';
         return 'Linking knowledge graph in SQLite database...';
       });
@@ -116,7 +118,7 @@ export const SpotlightSearch: React.FC<SpotlightSearchProps> = ({
       await onSearch(cleanTopic, currentDifficulty);
     } finally {
       clearInterval(interval);
-      setLoadingStep('Querying Vertex AI gemini-3.8-flash in global region...');
+      setLoadingStep('Synthesizing knowledge graph...');
     }
   };
 
@@ -188,10 +190,10 @@ export const SpotlightSearch: React.FC<SpotlightSearchProps> = ({
 
       {/* Header */}
       <div>
-        <h2 style={{ fontSize: '19px', margin: '0 0 4px 0', fontWeight: 500 }}>
+        <h2 style={{ fontSize: '22px', margin: '0 0 4px 0', fontWeight: 500 }}>
           {activeTopicTitle ? `Search in ${activeTopicTitle}` : 'What would you like to master?'}
         </h2>
-        <p style={{ margin: 0, color: 'var(--text-secondary)', fontSize: '13px' }}>
+        <p style={{ margin: 0, color: 'var(--text-secondary)', fontSize: '14.5px' }}>
           {activeTopicTitle
             ? 'Type to deep search concepts, notes, inquiries & quizzes, or generate a new topic graph.'
             : 'Type any concept, academic discipline, or research inquiry to synthesize an interconnected knowledge network.'}
@@ -214,8 +216,8 @@ export const SpotlightSearch: React.FC<SpotlightSearchProps> = ({
           {isSearching ? (
             <div
               style={{
-                width: '16px',
-                height: '16px',
+                width: '18px',
+                height: '18px',
                 border: '2px solid var(--accent-purple)',
                 borderTopColor: 'transparent',
                 borderRadius: '50%',
@@ -224,7 +226,7 @@ export const SpotlightSearch: React.FC<SpotlightSearchProps> = ({
               }}
             />
           ) : (
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" strokeWidth="2" style={{ marginRight: '10px' }}>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" strokeWidth="2" style={{ marginRight: '10px' }}>
               <circle cx="11" cy="11" r="8" />
               <line x1="21" y1="21" x2="16.65" y2="16.65" />
             </svg>
@@ -243,9 +245,9 @@ export const SpotlightSearch: React.FC<SpotlightSearchProps> = ({
               backgroundColor: 'transparent',
               border: 'none',
               color: 'var(--text-primary)',
-              fontSize: '15px',
+              fontSize: '17px',
               fontFamily: 'var(--font-sans)',
-              padding: '10px 0',
+              padding: '12px 0',
               outline: 'none',
             }}
           />
@@ -257,7 +259,7 @@ export const SpotlightSearch: React.FC<SpotlightSearchProps> = ({
               className="obsidian-btn-subtle"
               style={{ padding: '4px' }}
             >
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                 <line x1="18" y1="6" x2="6" y2="18" />
                 <line x1="6" y1="6" x2="18" y2="18" />
               </svg>
@@ -268,10 +270,39 @@ export const SpotlightSearch: React.FC<SpotlightSearchProps> = ({
             type="submit"
             disabled={!topic.trim() || isLoading}
             className="obsidian-btn obsidian-btn-primary"
-            style={{ marginLeft: '10px', opacity: topic.trim() && !isLoading ? 1 : 0.5 }}
+            style={{ marginLeft: '10px', padding: '8px 16px', fontSize: '14px', opacity: topic.trim() && !isLoading ? 1 : 0.5 }}
           >
             {isLoading ? 'Generating...' : 'Learn Topic'}
           </button>
+
+          {activeTopicId && onOpenWeave && topic.trim() && (
+            <button
+              type="button"
+              onClick={() => {
+                onOpenWeave(topic.trim());
+                if (onClose) onClose();
+              }}
+              className="obsidian-btn"
+              style={{
+                marginLeft: '6px',
+                backgroundColor: 'rgba(99, 102, 241, 0.2)',
+                color: 'var(--accent-primary)',
+                border: '1px solid rgba(99, 102, 241, 0.4)',
+                fontSize: '12.5px',
+                padding: '6px 10px',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '5px',
+                cursor: 'pointer',
+              }}
+              title="Weave this inquiry or concept into the active knowledge graph"
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="m12 3-1.9 5.8a2 2 0 0 1-1.3 1.3L3 12l5.8 1.9a2 2 0 0 1 1.3 1.3L12 21l1.9-5.8a2 2 0 0 1 1.3-1.3L21 12l-5.8-1.9a2 2 0 0 1-1.3-1.3z" />
+              </svg>
+              <span>Weave</span>
+            </button>
+          )}
         </div>
 
         {/* Categorized Deep Search Hits */}
@@ -285,15 +316,15 @@ export const SpotlightSearch: React.FC<SpotlightSearchProps> = ({
               border: '1px solid var(--border-subtle)',
               borderRadius: '6px',
               padding: '12px',
-              maxHeight: '280px',
+              maxHeight: '300px',
               overflowY: 'auto',
             }}
           >
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--border-subtle)', paddingBottom: '6px' }}>
-              <span style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+              <span style={{ fontSize: '12.5px', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
                 Deep Search Hits ({deepHits.length})
               </span>
-              <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
+              <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
                 Press Enter or click to navigate
               </span>
             </div>
@@ -301,7 +332,7 @@ export const SpotlightSearch: React.FC<SpotlightSearchProps> = ({
             {/* 1. Concepts & Tags */}
             {conceptHits.length > 0 && (
               <div>
-                <div style={{ fontSize: '11px', fontWeight: 600, color: 'var(--tag-concept-text)', margin: '4px 0 6px 0', textTransform: 'uppercase' }}>
+                <div style={{ fontSize: '12px', fontWeight: 600, color: 'var(--tag-concept-text)', margin: '4px 0 6px 0', textTransform: 'uppercase' }}>
                   Concepts & Tags ({conceptHits.length})
                 </div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
@@ -313,7 +344,7 @@ export const SpotlightSearch: React.FC<SpotlightSearchProps> = ({
                         key={`${h.node_id}-${h.snippet}`}
                         onClick={() => handleHitClick(h)}
                         style={{
-                          padding: '6px 10px',
+                          padding: '7px 11px',
                           borderRadius: '4px',
                           backgroundColor: isSelected ? 'rgba(139, 123, 245, 0.2)' : 'rgba(255, 255, 255, 0.02)',
                           cursor: 'pointer',
@@ -324,17 +355,17 @@ export const SpotlightSearch: React.FC<SpotlightSearchProps> = ({
                         }}
                       >
                         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
-                          <span style={{ color: 'var(--accent-purple)', fontSize: '12px' }}>◈</span>
-                          <span style={{ fontSize: '13px', fontWeight: 500, color: 'var(--text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                          <span style={{ color: 'var(--accent-purple)', fontSize: '13px' }}>◈</span>
+                          <span style={{ fontSize: '14.5px', fontWeight: 500, color: 'var(--text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                             {h.node_title}
                           </span>
                           {h.snippet && h.snippet !== h.node_title && (
-                            <span style={{ fontSize: '11.5px', color: 'var(--text-muted)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                            <span style={{ fontSize: '12.5px', color: 'var(--text-muted)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                               — {h.snippet}
                             </span>
                           )}
                         </div>
-                        <span style={{ fontSize: '10.5px', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)', flexShrink: 0 }}>
+                        <span style={{ fontSize: '11.5px', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)', flexShrink: 0 }}>
                           → Note
                         </span>
                       </div>
@@ -347,7 +378,7 @@ export const SpotlightSearch: React.FC<SpotlightSearchProps> = ({
             {/* 2. Note Content */}
             {contentHits.length > 0 && (
               <div>
-                <div style={{ fontSize: '11px', fontWeight: 600, color: '#93c5fd', margin: '4px 0 6px 0', textTransform: 'uppercase' }}>
+                <div style={{ fontSize: '12px', fontWeight: 600, color: '#93c5fd', margin: '4px 0 6px 0', textTransform: 'uppercase' }}>
                   Note Content ({contentHits.length})
                 </div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
@@ -359,7 +390,7 @@ export const SpotlightSearch: React.FC<SpotlightSearchProps> = ({
                         key={`${h.node_id}-${h.snippet}`}
                         onClick={() => handleHitClick(h)}
                         style={{
-                          padding: '6px 10px',
+                          padding: '7px 11px',
                           borderRadius: '4px',
                           backgroundColor: isSelected ? 'rgba(139, 123, 245, 0.2)' : 'rgba(255, 255, 255, 0.02)',
                           cursor: 'pointer',
@@ -370,14 +401,14 @@ export const SpotlightSearch: React.FC<SpotlightSearchProps> = ({
                         }}
                       >
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', minWidth: 0 }}>
-                          <span style={{ fontSize: '12.5px', fontWeight: 500, color: 'var(--text-primary)' }}>
+                          <span style={{ fontSize: '14px', fontWeight: 500, color: 'var(--text-primary)' }}>
                             {h.node_title}
                           </span>
-                          <span style={{ fontSize: '11.5px', color: 'var(--text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          <span style={{ fontSize: '12.5px', color: 'var(--text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                             {h.snippet}
                           </span>
                         </div>
-                        <span style={{ fontSize: '10.5px', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)', flexShrink: 0 }}>
+                        <span style={{ fontSize: '11.5px', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)', flexShrink: 0 }}>
                           → Study Note
                         </span>
                       </div>
@@ -390,7 +421,7 @@ export const SpotlightSearch: React.FC<SpotlightSearchProps> = ({
             {/* 3. Socratic Inquiries */}
             {inquiryHits.length > 0 && (
               <div>
-                <div style={{ fontSize: '11px', fontWeight: 600, color: 'var(--tag-question-text)', margin: '4px 0 6px 0', textTransform: 'uppercase' }}>
+                <div style={{ fontSize: '12px', fontWeight: 600, color: 'var(--tag-question-text)', margin: '4px 0 6px 0', textTransform: 'uppercase' }}>
                   Socratic Inquiries ({inquiryHits.length})
                 </div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
@@ -402,7 +433,7 @@ export const SpotlightSearch: React.FC<SpotlightSearchProps> = ({
                         key={`${h.node_id}-${h.snippet}`}
                         onClick={() => handleHitClick(h)}
                         style={{
-                          padding: '6px 10px',
+                          padding: '7px 11px',
                           borderRadius: '4px',
                           backgroundColor: isSelected ? 'rgba(139, 123, 245, 0.2)' : 'rgba(255, 255, 255, 0.02)',
                           cursor: 'pointer',
@@ -413,14 +444,14 @@ export const SpotlightSearch: React.FC<SpotlightSearchProps> = ({
                         }}
                       >
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', minWidth: 0 }}>
-                          <span style={{ fontSize: '12.5px', fontWeight: 500, color: 'var(--text-primary)' }}>
+                          <span style={{ fontSize: '14px', fontWeight: 500, color: 'var(--text-primary)' }}>
                             {h.node_title}
                           </span>
-                          <span style={{ fontSize: '11.5px', color: 'var(--tag-question-text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          <span style={{ fontSize: '12.5px', color: 'var(--tag-question-text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                             {h.snippet}
                           </span>
                         </div>
-                        <span style={{ fontSize: '10.5px', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)', flexShrink: 0 }}>
+                        <span style={{ fontSize: '11.5px', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)', flexShrink: 0 }}>
                           → Inquiries
                         </span>
                       </div>
@@ -433,7 +464,7 @@ export const SpotlightSearch: React.FC<SpotlightSearchProps> = ({
             {/* 4. Quizzes */}
             {quizHits.length > 0 && (
               <div>
-                <div style={{ fontSize: '11px', fontWeight: 600, color: 'var(--tag-quiz-text)', margin: '4px 0 6px 0', textTransform: 'uppercase' }}>
+                <div style={{ fontSize: '12px', fontWeight: 600, color: 'var(--tag-quiz-text)', margin: '4px 0 6px 0', textTransform: 'uppercase' }}>
                   Quizzes ({quizHits.length})
                 </div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
@@ -445,7 +476,7 @@ export const SpotlightSearch: React.FC<SpotlightSearchProps> = ({
                         key={`${h.node_id}-${h.snippet}`}
                         onClick={() => handleHitClick(h)}
                         style={{
-                          padding: '6px 10px',
+                          padding: '7px 11px',
                           borderRadius: '4px',
                           backgroundColor: isSelected ? 'rgba(139, 123, 245, 0.2)' : 'rgba(255, 255, 255, 0.02)',
                           cursor: 'pointer',
@@ -456,14 +487,14 @@ export const SpotlightSearch: React.FC<SpotlightSearchProps> = ({
                         }}
                       >
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', minWidth: 0 }}>
-                          <span style={{ fontSize: '12.5px', fontWeight: 500, color: 'var(--text-primary)' }}>
+                          <span style={{ fontSize: '14px', fontWeight: 500, color: 'var(--text-primary)' }}>
                             {h.node_title}
                           </span>
-                          <span style={{ fontSize: '11.5px', color: 'var(--tag-quiz-text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          <span style={{ fontSize: '12.5px', color: 'var(--tag-quiz-text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                             {h.snippet}
                           </span>
                         </div>
-                        <span style={{ fontSize: '10.5px', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)', flexShrink: 0 }}>
+                        <span style={{ fontSize: '11.5px', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)', flexShrink: 0 }}>
                           → Quiz
                         </span>
                       </div>
@@ -488,10 +519,10 @@ export const SpotlightSearch: React.FC<SpotlightSearchProps> = ({
           }}
         >
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <span style={{ fontSize: '12px', fontWeight: 500, color: 'var(--text-primary)' }}>
+            <span style={{ fontSize: '13.5px', fontWeight: 500, color: 'var(--text-primary)' }}>
               Generation Rigor & Difficulty
             </span>
-            <span style={{ fontSize: '11px', fontFamily: 'var(--font-mono)', color: 'var(--accent-purple)' }}>
+            <span style={{ fontSize: '12.5px', fontFamily: 'var(--font-mono)', color: 'var(--accent-purple)' }}>
               {DIFFICULTY_DESCRIPTIONS[currentDifficulty].label.toUpperCase()}
             </span>
           </div>
@@ -511,14 +542,14 @@ export const SpotlightSearch: React.FC<SpotlightSearchProps> = ({
             }}
           />
 
-          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', color: 'var(--text-muted)' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', color: 'var(--text-muted)' }}>
             <span>Beginner</span>
             <span>Intermediate</span>
             <span>Advanced</span>
             <span>Expert (Proofs)</span>
           </div>
 
-          <p style={{ margin: '4px 0 0 0', fontSize: '12px', color: 'var(--text-secondary)' }}>
+          <p style={{ margin: '4px 0 0 0', fontSize: '13.5px', color: 'var(--text-secondary)' }}>
             {DIFFICULTY_DESCRIPTIONS[currentDifficulty].detail}
           </p>
         </div>
@@ -539,8 +570,8 @@ export const SpotlightSearch: React.FC<SpotlightSearchProps> = ({
         >
           <div
             style={{
-              width: '14px',
-              height: '14px',
+              width: '16px',
+              height: '16px',
               border: '2px solid var(--accent-purple)',
               borderTopColor: 'transparent',
               borderRadius: '50%',
@@ -548,14 +579,14 @@ export const SpotlightSearch: React.FC<SpotlightSearchProps> = ({
             }}
           />
           <style>{`@keyframes spin { 100% { transform: rotate(360deg); } }`}</style>
-          <span style={{ fontSize: '13px', color: '#c4b5fd', fontFamily: 'var(--font-mono)' }}>
+          <span style={{ fontSize: '14px', color: '#c4b5fd', fontFamily: 'var(--font-mono)' }}>
             {loadingStep}
           </span>
         </div>
       ) : (
         /* Academic Topic Chips */
         <div>
-          <span style={{ fontSize: '11px', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+          <span style={{ fontSize: '12px', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
             Academic Suggestions
           </span>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginTop: '8px' }}>
@@ -565,8 +596,8 @@ export const SpotlightSearch: React.FC<SpotlightSearchProps> = ({
                 onClick={() => handleChipClick(t)}
                 className="obsidian-btn"
                 style={{
-                  fontSize: '12px',
-                  padding: '4px 10px',
+                  fontSize: '13.5px',
+                  padding: '5px 12px',
                   backgroundColor: 'var(--bg-card)',
                 }}
               >

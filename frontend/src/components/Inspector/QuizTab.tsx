@@ -124,7 +124,7 @@ export const QuizTab: React.FC<QuizTabProps> = ({
   };
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', gap: '14px' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0, gap: '14px' }}>
       {/* Quiz Generator Controls (for concept nodes or when adding more) */}
       {node.node_type !== 'quiz' ? (
         <div
@@ -139,10 +139,10 @@ export const QuizTab: React.FC<QuizTabProps> = ({
           }}
         >
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <span style={{ fontSize: '12px', fontWeight: 500, color: 'var(--text-primary)' }}>
+            <span style={{ fontSize: '13.5px', fontWeight: 500, color: 'var(--text-primary)' }}>
               Quiz Difficulty Level
             </span>
-            <span style={{ fontSize: '11px', fontFamily: 'var(--font-mono)', color: 'var(--tag-quiz-text)' }}>
+            <span style={{ fontSize: '12px', fontFamily: 'var(--font-mono)', color: 'var(--tag-quiz-text)' }}>
               {selectedDifficulty.toUpperCase()}
             </span>
           </div>
@@ -158,7 +158,7 @@ export const QuizTab: React.FC<QuizTabProps> = ({
             style={{ width: '100%', accentColor: 'var(--tag-quiz-text)' }}
           />
 
-          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '10px', color: 'var(--text-muted)' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11.5px', color: 'var(--text-muted)' }}>
             <span>Beginner</span>
             <span>Intermediate</span>
             <span>Advanced</span>
@@ -169,21 +169,21 @@ export const QuizTab: React.FC<QuizTabProps> = ({
             onClick={handleGenerate}
             disabled={isGenerating}
             className="obsidian-btn obsidian-btn-primary"
-            style={{ width: '100%', justifyContent: 'center', fontSize: '12px', marginTop: '4px' }}
+            style={{ width: '100%', justifyContent: 'center', fontSize: '13.5px', padding: '8px 14px', marginTop: '4px' }}
           >
             {isGenerating ? 'Synthesizing Challenges...' : `Generate 3 ${selectedDifficulty.toUpperCase()} Quizzes`}
           </button>
         </div>
       ) : (
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '2px 0' }}>
-          <span style={{ fontSize: '12px', fontWeight: 500, color: 'var(--text-secondary)' }}>
+          <span style={{ fontSize: '13.5px', fontWeight: 500, color: 'var(--text-secondary)' }}>
             {nodeQuizzes.length} Challenge{nodeQuizzes.length === 1 ? '' : 's'} in this Quiz
           </span>
           <button
             onClick={handleGenerate}
             disabled={isGenerating}
             className="obsidian-btn"
-            style={{ fontSize: '11px', padding: '3px 8px' }}
+            style={{ fontSize: '12.5px', padding: '5px 10px' }}
             title="Generate additional challenge questions for this quiz"
           >
             {isGenerating ? 'Generating...' : '+ Add Questions'}
@@ -194,7 +194,7 @@ export const QuizTab: React.FC<QuizTabProps> = ({
       {/* Quizzes List */}
       <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '14px', paddingRight: '4px' }}>
         {nodeQuizzes.length === 0 ? (
-          <div style={{ textAlign: 'center', padding: '32px 16px', color: 'var(--text-muted)', fontSize: '13px' }}>
+          <div style={{ textAlign: 'center', padding: '32px 16px', color: 'var(--text-muted)', fontSize: '14.5px' }}>
             No quizzes generated yet for {node.title}. Choose a difficulty above and click generate.
           </div>
         ) : (
@@ -214,7 +214,7 @@ export const QuizTab: React.FC<QuizTabProps> = ({
                 }}
               >
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <span style={{ fontSize: '11px', fontFamily: 'var(--font-mono)', color: 'var(--text-muted)' }}>
+                  <span style={{ fontSize: '12px', fontFamily: 'var(--font-mono)', color: 'var(--text-muted)' }}>
                     QUESTION #{qIdx + 1} &bull; {quiz.difficulty?.toUpperCase() || 'CHALLENGE'}
                   </span>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -224,8 +224,8 @@ export const QuizTab: React.FC<QuizTabProps> = ({
                         disabled={detachingQuizId === quiz.id}
                         className="obsidian-btn-subtle"
                         style={{
-                          fontSize: '11px',
-                          padding: '3px 8px',
+                          fontSize: '12px',
+                          padding: '4px 9px',
                           color: 'var(--tag-question-text)',
                           display: 'flex',
                           alignItems: 'center',
@@ -236,7 +236,7 @@ export const QuizTab: React.FC<QuizTabProps> = ({
                         }}
                         title="Move this question out of this quiz into its own independent Question node in the graph"
                       >
-                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                           <polyline points="15 3 21 3 21 9" />
                           <line x1="10" y1="14" x2="21" y2="3" />
                           <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
@@ -247,7 +247,7 @@ export const QuizTab: React.FC<QuizTabProps> = ({
                     {hasAnswered && (
                       <span
                         style={{
-                          fontSize: '11px',
+                          fontSize: '12px',
                           fontWeight: 600,
                           color: quiz.is_correct ? '#4ade80' : '#f87171',
                           fontFamily: 'var(--font-mono)',
@@ -259,7 +259,7 @@ export const QuizTab: React.FC<QuizTabProps> = ({
                   </div>
                 </div>
 
-                <div style={{ fontSize: '14px', fontWeight: 500, color: 'var(--text-primary)', lineHeight: 1.55 }}>
+                <div style={{ fontSize: '15.5px', fontWeight: 500, color: 'var(--text-primary)', lineHeight: 1.55 }}>
                   <MathText text={quiz.question} />
                 </div>
 
@@ -292,12 +292,12 @@ export const QuizTab: React.FC<QuizTabProps> = ({
                         disabled={hasAnswered || answeringQuizId === quiz.id}
                         style={{
                           textAlign: 'left',
-                          padding: '9px 12px',
+                          padding: '10px 14px',
                           backgroundColor: bg,
                           border: `1px solid ${border}`,
                           borderRadius: '4px',
                           color: textCol,
-                          fontSize: '13px',
+                          fontSize: '14.5px',
                           fontFamily: 'var(--font-sans)',
                           cursor: hasAnswered ? 'default' : 'pointer',
                           transition: 'all 120ms ease',
@@ -309,9 +309,9 @@ export const QuizTab: React.FC<QuizTabProps> = ({
                         <span
                           style={{
                             fontFamily: 'var(--font-mono)',
-                            fontSize: '11px',
+                            fontSize: '12px',
                             color: 'var(--text-muted)',
-                            width: '18px',
+                            width: '20px',
                             flexShrink: 0,
                           }}
                         >
@@ -344,8 +344,8 @@ export const QuizTab: React.FC<QuizTabProps> = ({
                     />
                     {quiz.conceptual_trap && (
                       <div style={{ marginTop: '8px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                        <div style={{ fontSize: '12px', color: '#fde047' }}>
-                          💡 <em>Misconception tested: <MathText text={quiz.conceptual_trap} /></em>
+                        <div style={{ fontSize: '13px', color: '#fde047' }}>
+                          <em>Misconception tested: <MathText text={quiz.conceptual_trap} /></em>
                         </div>
                         <div>
                           <button
@@ -355,18 +355,18 @@ export const QuizTab: React.FC<QuizTabProps> = ({
                               display: 'inline-flex',
                               alignItems: 'center',
                               gap: '5px',
-                              padding: '4px 8px',
+                              padding: '5px 10px',
                               backgroundColor: forkedTrapQuizIds.has(quiz.id) ? 'rgba(74, 222, 128, 0.15)' : 'rgba(253, 224, 71, 0.15)',
                               border: `1px solid ${forkedTrapQuizIds.has(quiz.id) ? '#4ade80' : 'rgba(253, 224, 71, 0.4)'}`,
                               borderRadius: '4px',
                               color: forkedTrapQuizIds.has(quiz.id) ? '#4ade80' : '#fde047',
-                              fontSize: '11px',
+                              fontSize: '12px',
                               cursor: forkedTrapQuizIds.has(quiz.id) || forkingTrapQuizId === quiz.id ? 'default' : 'pointer',
                               fontFamily: 'var(--font-sans)',
                               transition: 'all 120ms ease',
                             }}
                           >
-                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                               <circle cx="12" cy="12" r="10" />
                               <line x1="12" y1="8" x2="12" y2="12" />
                               <line x1="12" y1="16" x2="12.01" y2="16" />

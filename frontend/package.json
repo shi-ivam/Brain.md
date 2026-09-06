@@ -9,11 +9,12 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "react": "^19.0.0",
-    "react-dom": "^19.0.0",
     "canvas-confetti": "^1.9.4",
     "katex": "^0.16.21",
-    "marked": "^15.0.7"
+    "marked": "^15.0.7",
+    "mermaid": "^11.17.2",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
   },
   "devDependencies": {
     "@types/canvas-confetti": "^1.9.0",

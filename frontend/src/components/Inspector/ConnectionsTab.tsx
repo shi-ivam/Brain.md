@@ -86,19 +86,19 @@ export const ConnectionsTab: React.FC<ConnectionsTabProps> = ({
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', gap: '16px', overflowY: 'auto' }}>
       {/* Incoming */}
       <div>
-        <span style={{ fontSize: '11px', fontFamily: 'var(--font-mono)', color: 'var(--text-muted)', textTransform: 'uppercase' }}>
+        <span style={{ fontSize: '12.5px', fontFamily: 'var(--font-mono)', color: 'var(--text-muted)', textTransform: 'uppercase' }}>
           Prerequisites & Influences ({incoming.length})
         </span>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginTop: '6px' }}>
           {incoming.length === 0 ? (
-            <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>None (Root entry point)</span>
+            <span style={{ fontSize: '13.5px', color: 'var(--text-muted)' }}>None (Root entry point)</span>
           ) : (
             incoming.map(({ edge, otherNode }) => (
               <div
                 key={edge.id}
                 onClick={() => onSelectNode(otherNode)}
                 style={{
-                  padding: '8px 12px',
+                  padding: '9px 13px',
                   backgroundColor: 'var(--bg-card)',
                   border: '1px solid var(--border-subtle)',
                   borderRadius: '4px',
@@ -109,14 +109,14 @@ export const ConnectionsTab: React.FC<ConnectionsTabProps> = ({
                 }}
               >
                 <div>
-                  <div style={{ fontSize: '13px', fontWeight: 500, color: 'var(--text-primary)' }}>
+                  <div style={{ fontSize: '14.5px', fontWeight: 500, color: 'var(--text-primary)' }}>
                     [[{otherNode.title}]]
                   </div>
-                  <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
+                  <div style={{ fontSize: '12.5px', color: 'var(--text-muted)' }}>
                     {edge.label || edge.relation_type}
                   </div>
                 </div>
-                <span className={`obsidian-badge badge-${otherNode.node_type}`} style={{ fontSize: '10px' }}>
+                <span className={`obsidian-badge badge-${otherNode.node_type}`} style={{ fontSize: '11.5px' }}>
                   {otherNode.node_type}
                 </span>
               </div>
@@ -127,19 +127,19 @@ export const ConnectionsTab: React.FC<ConnectionsTabProps> = ({
 
       {/* Outgoing */}
       <div>
-        <span style={{ fontSize: '11px', fontFamily: 'var(--font-mono)', color: 'var(--text-muted)', textTransform: 'uppercase' }}>
+        <span style={{ fontSize: '12.5px', fontFamily: 'var(--font-mono)', color: 'var(--text-muted)', textTransform: 'uppercase' }}>
           Leads Into & Branches ({outgoing.length})
         </span>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginTop: '6px' }}>
           {outgoing.length === 0 ? (
-            <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>No outward branches yet. Click '+' to expand.</span>
+            <span style={{ fontSize: '13.5px', color: 'var(--text-muted)' }}>No outward branches yet. Click '+' to expand.</span>
           ) : (
             outgoing.map(({ edge, otherNode }) => (
               <div
                 key={edge.id}
                 onClick={() => onSelectNode(otherNode)}
                 style={{
-                  padding: '8px 12px',
+                  padding: '9px 13px',
                   backgroundColor: 'var(--bg-card)',
                   border: '1px solid var(--border-subtle)',
                   borderRadius: '4px',
@@ -150,14 +150,14 @@ export const ConnectionsTab: React.FC<ConnectionsTabProps> = ({
                 }}
               >
                 <div>
-                  <div style={{ fontSize: '13px', fontWeight: 500, color: 'var(--text-primary)' }}>
+                  <div style={{ fontSize: '14.5px', fontWeight: 500, color: 'var(--text-primary)' }}>
                     [[{otherNode.title}]]
                   </div>
-                  <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
+                  <div style={{ fontSize: '12.5px', color: 'var(--text-muted)' }}>
                     {edge.label || edge.relation_type}
                   </div>
                 </div>
-                <span className={`obsidian-badge badge-${otherNode.node_type}`} style={{ fontSize: '10px' }}>
+                <span className={`obsidian-badge badge-${otherNode.node_type}`} style={{ fontSize: '11.5px' }}>
                   {otherNode.node_type}
                 </span>
               </div>
@@ -169,16 +169,16 @@ export const ConnectionsTab: React.FC<ConnectionsTabProps> = ({
       {/* Unlinked Mentions (Feature 5) */}
       <div>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <span style={{ fontSize: '11px', fontFamily: 'var(--font-mono)', color: 'var(--text-muted)', textTransform: 'uppercase' }}>
+          <span style={{ fontSize: '12.5px', fontFamily: 'var(--font-mono)', color: 'var(--text-muted)', textTransform: 'uppercase' }}>
             Unlinked Mentions ({unlinkedMentions.length})
           </span>
           {loadingMentions && (
-            <span style={{ fontSize: '10px', color: 'var(--text-muted)' }}>Scanning notes...</span>
+            <span style={{ fontSize: '11.5px', color: 'var(--text-muted)' }}>Scanning notes...</span>
           )}
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginTop: '6px' }}>
           {unlinkedMentions.length === 0 ? (
-            <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
+            <span style={{ fontSize: '13.5px', color: 'var(--text-muted)' }}>
               No unlinked mentions found in other concept notes.
             </span>
           ) : (
@@ -186,7 +186,7 @@ export const ConnectionsTab: React.FC<ConnectionsTabProps> = ({
               <div
                 key={mention.node_id}
                 style={{
-                  padding: '10px 12px',
+                  padding: '10px 14px',
                   backgroundColor: 'var(--bg-card)',
                   border: '1px solid var(--border-subtle)',
                   borderRadius: '4px',
@@ -203,7 +203,7 @@ export const ConnectionsTab: React.FC<ConnectionsTabProps> = ({
                       if (other) onSelectNode(other);
                     }}
                     style={{
-                      fontSize: '13px',
+                      fontSize: '14.5px',
                       fontWeight: 500,
                       color: 'var(--text-primary)',
                       cursor: 'pointer',
@@ -213,10 +213,10 @@ export const ConnectionsTab: React.FC<ConnectionsTabProps> = ({
                   </div>
                   <div
                     style={{
-                      fontSize: '11px',
+                      fontSize: '12.5px',
                       color: 'var(--text-muted)',
                       fontStyle: 'italic',
-                      marginTop: '2px',
+                      marginTop: '3px',
                       overflow: 'hidden',
                       textOverflow: 'ellipsis',
                       whiteSpace: 'nowrap',
@@ -231,19 +231,19 @@ export const ConnectionsTab: React.FC<ConnectionsTabProps> = ({
                   disabled={linkifyingNodeId === mention.node_id}
                   className="obsidian-btn"
                   style={{
-                    fontSize: '11px',
-                    padding: '3px 8px',
+                    fontSize: '12.5px',
+                    padding: '5px 10px',
                     borderColor: 'var(--accent-purple)',
                     color: 'var(--text-primary)',
                     backgroundColor: 'rgba(139, 123, 245, 0.15)',
                     display: 'flex',
                     alignItems: 'center',
-                    gap: '4px',
+                    gap: '5px',
                     flexShrink: 0,
                   }}
                   title={`Append [[${node.title}]] to this note and sync graph`}
                 >
-                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                     <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
                     <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
                   </svg>

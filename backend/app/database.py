@@ -1,3 +1,4 @@
+import os
 import sqlite3
 import json
 import uuid
@@ -11,9 +12,10 @@ def now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 def get_connection() -> sqlite3.Connection:
-    conn = sqlite3.connect(DATABASE_PATH)
+    conn = sqlite3.connect(DATABASE_PATH, timeout=30.0)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON;")
+    conn.execute("PRAGMA busy_timeout = 10000;")
     return conn
 
 def init_db():
@@ -102,6 +104,62 @@ def init_db():
         CREATE INDEX IF NOT EXISTS idx_edges_tgt ON edges(target_id);
         CREATE INDEX IF NOT EXISTS idx_quizzes_node ON quizzes(node_id);
         CREATE INDEX IF NOT EXISTS idx_inquiries_node ON inquiries(node_id);
+
+        CREATE TABLE IF NOT EXISTS resources (
+            id TEXT PRIMARY KEY,
+            node_id TEXT NOT NULL,
+            topic_id TEXT NOT NULL,
+            title TEXT NOT NULL,
+            resource_type TEXT NOT NULL, -- 'youtube', 'pdf', 'url', 'other'
+            url TEXT NOT NULL,
+            file_path TEXT,
+            file_size INTEGER,
+            thumbnail_url TEXT,
+            notes TEXT DEFAULT '',
+            metadata_json TEXT DEFAULT '{}',
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            FOREIGN KEY(node_id) REFERENCES nodes(id) ON DELETE CASCADE,
+            FOREIGN KEY(topic_id) REFERENCES topics(id) ON DELETE CASCADE
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_resources_node ON resources(node_id);
+        CREATE INDEX IF NOT EXISTS idx_resources_topic ON resources(topic_id);
+
+        CREATE TABLE IF NOT EXISTS slides (
+            id TEXT PRIMARY KEY,
+            node_id TEXT NOT NULL,
+            topic_id TEXT NOT NULL,
+            deck_title TEXT NOT NULL,
+            slides_json TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            FOREIGN KEY(node_id) REFERENCES nodes(id) ON DELETE CASCADE,
+            FOREIGN KEY(topic_id) REFERENCES topics(id) ON DELETE CASCADE
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_slides_node ON slides(node_id);
+        CREATE INDEX IF NOT EXISTS idx_slides_topic ON slides(topic_id);
+
+        CREATE TABLE IF NOT EXISTS visualizations (
+            id TEXT PRIMARY KEY,
+            node_id TEXT NOT NULL,
+            topic_id TEXT NOT NULL,
+            title TEXT NOT NULL,
+            visualization_type TEXT NOT NULL, -- 'flowchart', 'mindmap', 'sequence', 'state', 'architecture', 'timeline', 'custom'
+            code TEXT NOT NULL,
+            description TEXT DEFAULT '',
+            explanation TEXT DEFAULT '',
+            format TEXT DEFAULT 'mermaid', -- 'mermaid' or 'svg'
+            metadata_json TEXT DEFAULT '{}',
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            FOREIGN KEY(node_id) REFERENCES nodes(id) ON DELETE CASCADE,
+            FOREIGN KEY(topic_id) REFERENCES topics(id) ON DELETE CASCADE
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_visualizations_node ON visualizations(node_id);
+        CREATE INDEX IF NOT EXISTS idx_visualizations_topic ON visualizations(topic_id);
         """)
 
         # Safe table migration with PRAGMA table_info checks
@@ -205,6 +263,22 @@ def get_full_graph(topic_id: str) -> Dict[str, Any]:
     cursor.execute("SELECT * FROM inquiries WHERE topic_id = ? ORDER BY created_at ASC", (topic_id,))
     inquiry_rows = [dict(r) for r in cursor.fetchall()]
 
+    cursor.execute("SELECT * FROM resources WHERE topic_id = ? ORDER BY created_at ASC", (topic_id,))
+    resource_rows = [dict(r) for r in cursor.fetchall()]
+    for r in resource_rows:
+        try:
+            r['metadata'] = json.loads(r.get('metadata_json') or '{}')
+        except Exception:
+            r['metadata'] = {}
+
+    cursor.execute("SELECT * FROM visualizations WHERE topic_id = ? ORDER BY created_at ASC", (topic_id,))
+    visualization_rows = [dict(r) for r in cursor.fetchall()]
+    for v in visualization_rows:
+        try:
+            v['metadata'] = json.loads(v.get('metadata_json') or '{}')
+        except Exception:
+            v['metadata'] = {}
+
     conn.close()
     return {
         "topic": dict(topic_row),
@@ -212,12 +286,25 @@ def get_full_graph(topic_id: str) -> Dict[str, Any]:
         "edges": edge_rows,
         "quizzes": quiz_rows,
         "inquiries": inquiry_rows,
+        "resources": resource_rows,
+        "visualizations": visualization_rows,
     }
 
 def delete_topic(topic_id: str) -> bool:
     conn = get_connection()
+    cursor = conn.cursor()
+    try:
+        cursor.execute("SELECT file_path FROM resources WHERE topic_id = ? AND file_path IS NOT NULL", (topic_id,))
+        for row in cursor.fetchall():
+            fp = row["file_path"]
+            if fp and os.path.exists(fp):
+                try:
+                    os.remove(fp)
+                except Exception:
+                    pass
+    except Exception:
+        pass
     with conn:
-        cursor = conn.cursor()
         cursor.execute("DELETE FROM topics WHERE id = ?", (topic_id,))
         deleted = cursor.rowcount > 0
     conn.close()
@@ -891,6 +978,18 @@ def update_edge(edge_id: str, edge_type: Optional[str] = None, label: Optional[s
     conn.close()
     return updated
 
+def delete_edge(edge_id: str) -> bool:
+    """
+    Deletes an edge by ID.
+    """
+    conn = get_connection()
+    cursor = conn.cursor()
+    with conn:
+        cursor.execute("DELETE FROM edges WHERE id = ?", (edge_id,))
+        deleted = cursor.rowcount > 0
+    conn.close()
+    return deleted
+
 def update_node_portal(node_id: str, portal_topic_id: Optional[str]) -> Optional[Dict[str, Any]]:
     """
     Links a node to another topic as a portal.
@@ -1108,4 +1207,559 @@ def auto_organize_topic_graph(topic_id: str) -> Optional[Dict[str, Any]]:
     conn.close()
 
     return get_full_graph(topic_id)
+
+
+# ==========================================
+# Resource Management Queries & Mutations
+# ==========================================
+
+def add_resource(
+    node_id: str,
+    topic_id: str,
+    title: str,
+    resource_type: str,
+    url: str,
+    file_path: Optional[str] = None,
+    file_size: Optional[int] = None,
+    thumbnail_url: Optional[str] = None,
+    notes: str = "",
+    metadata: Optional[Dict[str, Any]] = None
+) -> Dict[str, Any]:
+    conn = get_connection()
+    res_id = str(uuid.uuid4())
+    now = now_iso()
+    meta_str = json.dumps(metadata or {})
+    with conn:
+        conn.execute(
+            """INSERT INTO resources 
+               (id, node_id, topic_id, title, resource_type, url, file_path, file_size, thumbnail_url, notes, metadata_json, created_at, updated_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (res_id, node_id, topic_id, title, resource_type, url, file_path, file_size, thumbnail_url, notes, meta_str, now, now)
+        )
+    conn.close()
+    return {
+        "id": res_id,
+        "node_id": node_id,
+        "topic_id": topic_id,
+        "title": title,
+        "resource_type": resource_type,
+        "url": url,
+        "file_path": file_path,
+        "file_size": file_size,
+        "thumbnail_url": thumbnail_url,
+        "notes": notes,
+        "metadata": metadata or {},
+        "created_at": now,
+        "updated_at": now
+    }
+
+def get_resource(resource_id: str) -> Optional[Dict[str, Any]]:
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM resources WHERE id = ?", (resource_id,))
+    row = cursor.fetchone()
+    conn.close()
+    if not row:
+        return None
+    res = dict(row)
+    try:
+        res["metadata"] = json.loads(res.get("metadata_json") or "{}")
+    except Exception:
+        res["metadata"] = {}
+    return res
+
+def list_resources_for_node(node_id: str) -> List[Dict[str, Any]]:
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM resources WHERE node_id = ? ORDER BY created_at ASC", (node_id,))
+    rows = [dict(r) for r in cursor.fetchall()]
+    conn.close()
+    for r in rows:
+        try:
+            r["metadata"] = json.loads(r.get("metadata_json") or "{}")
+        except Exception:
+            r["metadata"] = {}
+    return rows
+
+def list_resources_for_topic(topic_id: str) -> List[Dict[str, Any]]:
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM resources WHERE topic_id = ? ORDER BY created_at ASC", (topic_id,))
+    rows = [dict(r) for r in cursor.fetchall()]
+    conn.close()
+    for r in rows:
+        try:
+            r["metadata"] = json.loads(r.get("metadata_json") or "{}")
+        except Exception:
+            r["metadata"] = {}
+    return rows
+
+def delete_resource(resource_id: str) -> bool:
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT file_path FROM resources WHERE id = ?", (resource_id,))
+    row = cursor.fetchone()
+    if not row:
+        conn.close()
+        return False
+    fp = row["file_path"]
+    if fp and os.path.exists(fp):
+        try:
+            os.remove(fp)
+        except Exception:
+            pass
+    with conn:
+        cursor.execute("DELETE FROM resources WHERE id = ?", (resource_id,))
+        deleted = cursor.rowcount > 0
+    conn.close()
+    return deleted
+
+def update_resource(
+    resource_id: str,
+    title: Optional[str] = None,
+    notes: Optional[str] = None,
+    metadata: Optional[Dict[str, Any]] = None
+) -> Optional[Dict[str, Any]]:
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM resources WHERE id = ?", (resource_id,))
+    row = cursor.fetchone()
+    if not row:
+        conn.close()
+        return None
+    res = dict(row)
+    new_title = title if title is not None else res["title"]
+    new_notes = notes if notes is not None else res["notes"]
+    if metadata is not None:
+        new_meta = metadata
+    else:
+        try:
+            new_meta = json.loads(res.get("metadata_json") or "{}")
+        except Exception:
+            new_meta = {}
+    now = now_iso()
+    with conn:
+        cursor.execute(
+            "UPDATE resources SET title = ?, notes = ?, metadata_json = ?, updated_at = ? WHERE id = ?",
+            (new_title, new_notes, json.dumps(new_meta), now, resource_id)
+        )
+    conn.close()
+    return get_resource(resource_id)
+
+def get_slides_for_node(node_id: str) -> Optional[Dict[str, Any]]:
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM slides WHERE node_id = ?", (node_id,))
+    row = cursor.fetchone()
+    conn.close()
+    if not row:
+        return None
+    d = dict(row)
+    try:
+        d["slides"] = json.loads(d["slides_json"])
+    except Exception:
+        d["slides"] = []
+    return d
+
+def save_slides_for_node(
+    node_id: str,
+    topic_id: str,
+    deck_title: str,
+    slides_data: List[Dict[str, Any]]
+) -> Dict[str, Any]:
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT id FROM slides WHERE node_id = ?", (node_id,))
+    row = cursor.fetchone()
+    now = now_iso()
+    slides_json = json.dumps(slides_data)
+
+    with conn:
+        if row:
+            slide_id = row["id"]
+            cursor.execute(
+                "UPDATE slides SET deck_title = ?, slides_json = ?, updated_at = ? WHERE id = ?",
+                (deck_title, slides_json, now, slide_id)
+            )
+        else:
+            slide_id = str(uuid.uuid4())
+            cursor.execute(
+                "INSERT INTO slides (id, node_id, topic_id, deck_title, slides_json, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                (slide_id, node_id, topic_id, deck_title, slides_json, now, now)
+            )
+    conn.close()
+    return get_slides_for_node(node_id)  # type: ignore
+
+def delete_slides_for_node(node_id: str) -> bool:
+    conn = get_connection()
+    with conn:
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM slides WHERE node_id = ?", (node_id,))
+        deleted = cursor.rowcount > 0
+    conn.close()
+    return deleted
+
+def bridge_edge(
+    edge_id: str,
+    bridge_nodes_data: List[Dict[str, Any]],
+    relation_to_target: str = "prerequisite_for",
+    label_to_target: str = ""
+) -> Tuple[Dict[str, Any], List[str]]:
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM edges WHERE id = ?", (edge_id,))
+    edge = cursor.fetchone()
+    if not edge:
+        conn.close()
+        raise ValueError("Edge not found")
+
+    topic_id = edge["topic_id"]
+    source_id = edge["source_id"]
+    target_id = edge["target_id"]
+
+    cursor.execute("SELECT * FROM nodes WHERE id = ?", (source_id,))
+    source_node = cursor.fetchone()
+    cursor.execute("SELECT * FROM nodes WHERE id = ?", (target_id,))
+    target_node = cursor.fetchone()
+
+    sx = (source_node["pos_x"] if source_node and source_node["pos_x"] is not None else 300.0)
+    sy = (source_node["pos_y"] if source_node and source_node["pos_y"] is not None else 300.0)
+    tx = (target_node["pos_x"] if target_node and target_node["pos_x"] is not None else 600.0)
+    ty = (target_node["pos_y"] if target_node and target_node["pos_y"] is not None else 300.0)
+
+    now = now_iso()
+    k = len(bridge_nodes_data)
+    created_node_ids = []
+
+    with conn:
+        prev_node_id = source_id
+
+        for idx, b_data in enumerate(bridge_nodes_data):
+            new_id = str(uuid.uuid4())
+            created_node_ids.append(new_id)
+
+            t = (idx + 1) / (k + 1)
+            lateral_offset = ((-1) ** idx) * 45.0
+            bx = sx + t * (tx - sx)
+            by = sy + t * (ty - sy) + lateral_offset
+
+            title = b_data.get("title", f"Bridge Step {idx + 1}")
+            node_type = b_data.get("node_type", "concept")
+            summary = b_data.get("summary", "")
+            content = f"# {title}\n\n{summary}\n\n*Bridging transition from [[{source_node['title'] if source_node else 'Source'}]] to [[{target_node['title'] if target_node else 'Target'}]].*\n"
+
+            cursor.execute(
+                """
+                INSERT INTO nodes (id, topic_id, parent_node_id, title, node_type, summary, content, difficulty, pos_x, pos_y, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (new_id, topic_id, prev_node_id, title, node_type, summary, content, source_node["difficulty"] if source_node else "intermediate", bx, by, now, now)
+            )
+
+            rel_from_prev = b_data.get("relation_from_prev", "subtopic_of")
+            lbl_from_prev = b_data.get("label_from_prev", "")
+            cursor.execute(
+                """
+                INSERT INTO edges (id, topic_id, source_id, target_id, relation_type, edge_type, label, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (str(uuid.uuid4()), topic_id, prev_node_id, new_id, rel_from_prev, rel_from_prev, lbl_from_prev, now)
+            )
+
+            prev_node_id = new_id
+
+        cursor.execute(
+            """
+            INSERT INTO edges (id, topic_id, source_id, target_id, relation_type, edge_type, label, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (str(uuid.uuid4()), topic_id, prev_node_id, target_id, relation_to_target, relation_to_target, label_to_target, now)
+        )
+
+        cursor.execute("DELETE FROM edges WHERE id = ?", (edge_id,))
+
+    conn.close()
+    return get_full_graph(topic_id), created_node_ids
+
+def insert_node_between(
+    edge_id: str,
+    title: str,
+    node_type: str = "concept",
+    summary: str = "",
+    relation_source_to_new: str = "subtopic_of",
+    relation_new_to_target: str = "prerequisite_for",
+    label_source_to_new: str = "",
+    label_new_to_target: str = ""
+) -> Tuple[Dict[str, Any], str]:
+    bridge_item = {
+        "title": title,
+        "node_type": node_type,
+        "summary": summary,
+        "relation_from_prev": relation_source_to_new,
+        "label_from_prev": label_source_to_new,
+    }
+    graph, ids = bridge_edge(
+        edge_id=edge_id,
+        bridge_nodes_data=[bridge_item],
+        relation_to_target=relation_new_to_target,
+        label_to_target=label_new_to_target
+    )
+    return graph, ids[0]
+
+def weave_nodes_and_edges(
+    topic_id: str,
+    nodes_data: List[Dict[str, Any]],
+    edges_data: List[Dict[str, Any]],
+    anchor_ids: List[str]
+) -> Tuple[Dict[str, Any], str, List[str]]:
+    import math
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    anchor_positions = []
+    for aid in anchor_ids:
+        cursor.execute("SELECT id, title, pos_x, pos_y FROM nodes WHERE id = ? OR id LIKE ?", (aid, f"{aid}%"))
+        row = cursor.fetchone()
+        if row and row["pos_x"] is not None and row["pos_y"] is not None:
+            anchor_positions.append((row["pos_x"], row["pos_y"]))
+
+    if anchor_positions:
+        avg_x = sum(p[0] for p in anchor_positions) / len(anchor_positions)
+        avg_y = sum(p[1] for p in anchor_positions) / len(anchor_positions)
+    else:
+        avg_x, avg_y = 500.0, 400.0
+
+    cursor.execute("SELECT id, title FROM nodes WHERE topic_id = ?", (topic_id,))
+    title_to_id = {row["title"].lower().strip(): row["id"] for row in cursor.fetchall()}
+    for aid in anchor_ids:
+        for t, nid in list(title_to_id.items()):
+            if nid.startswith(aid):
+                title_to_id[aid.lower()] = nid
+
+    now = now_iso()
+    created_node_ids = []
+    primary_node_id = None
+
+    with conn:
+        for idx, nd in enumerate(nodes_data):
+            nid = str(uuid.uuid4())
+            created_node_ids.append(nid)
+            is_primary = nd.get("is_primary_target", False)
+            if is_primary or primary_node_id is None:
+                primary_node_id = nid
+
+            title = nd["title"].strip()
+            title_to_id[title.lower()] = nid
+            node_type = nd.get("node_type", "concept")
+            summary = nd.get("summary", "")
+            content = f"# {title}\n\n{summary}\n"
+
+            angle = (idx / max(1, len(nodes_data))) * 2.0 * math.pi + 0.45
+            dist = 220.0 + (idx * 40.0)
+            nx = avg_x + math.cos(angle) * dist
+            ny = avg_y + math.sin(angle) * dist
+
+            cursor.execute(
+                """
+                INSERT INTO nodes (id, topic_id, parent_node_id, title, node_type, summary, content, difficulty, pos_x, pos_y, created_at, updated_at)
+                VALUES (?, ?, NULL, ?, ?, ?, ?, 'intermediate', ?, ?, ?, ?)
+                """,
+                (nid, topic_id, title, node_type, summary, content, nx, ny, now, now)
+            )
+
+        for ed in edges_data:
+            src_key = ed.get("source_title", "").lower().strip()
+            tgt_key = ed.get("target_title", "").lower().strip()
+
+            src_id = title_to_id.get(src_key)
+            tgt_id = title_to_id.get(tgt_key)
+
+            if not src_id:
+                for k, v in title_to_id.items():
+                    if k.startswith(src_key[:8]) or src_key.startswith(k[:8]):
+                        src_id = v
+                        break
+            if not tgt_id:
+                for k, v in title_to_id.items():
+                    if k.startswith(tgt_key[:8]) or tgt_key.startswith(k[:8]):
+                        tgt_id = v
+                        break
+
+            if src_id and tgt_id and src_id != tgt_id:
+                cursor.execute(
+                    "SELECT id FROM edges WHERE source_id = ? AND target_id = ?",
+                    (src_id, tgt_id)
+                )
+                if not cursor.fetchone():
+                    rel = ed.get("relation_type", "related_to")
+                    lbl = ed.get("label", "")
+                    cursor.execute(
+                        """
+                        INSERT INTO edges (id, topic_id, source_id, target_id, relation_type, edge_type, label, created_at)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                        """,
+                        (str(uuid.uuid4()), topic_id, src_id, tgt_id, rel, rel, lbl, now)
+                    )
+
+    conn.close()
+    return get_full_graph(topic_id), (primary_node_id or created_node_ids[0]), created_node_ids
+
+
+# ==================== Visualizations CRUD ====================
+
+def get_visualizations_for_node(node_id: str) -> List[Dict[str, Any]]:
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute(
+        "SELECT * FROM visualizations WHERE node_id = ? ORDER BY created_at ASC",
+        (node_id,)
+    )
+    rows = [dict(r) for r in cursor.fetchall()]
+    conn.close()
+    for r in rows:
+        try:
+            r["metadata"] = json.loads(r.get("metadata_json") or "{}")
+        except Exception:
+            r["metadata"] = {}
+    return rows
+
+
+def get_visualization_by_id(vis_id: str) -> Optional[Dict[str, Any]]:
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM visualizations WHERE id = ?", (vis_id,))
+    row = cursor.fetchone()
+    conn.close()
+    if not row:
+        return None
+    res = dict(row)
+    try:
+        res["metadata"] = json.loads(res.get("metadata_json") or "{}")
+    except Exception:
+        res["metadata"] = {}
+    return res
+
+
+def save_visualizations_for_node(
+    node_id: str,
+    topic_id: str,
+    visualizations_data: List[Dict[str, Any]]
+) -> List[Dict[str, Any]]:
+    now = now_iso()
+    conn = get_connection()
+    with conn:
+        cursor = conn.cursor()
+        for v in visualizations_data:
+            vis_id = v.get("id") or str(uuid.uuid4())
+            title = v.get("title", "Concept Visualization")
+            vis_type = v.get("visualization_type", "flowchart")
+            code = v.get("code", "")
+            description = v.get("description", "")
+            explanation = v.get("explanation", "")
+            fmt = v.get("format", "mermaid")
+            meta = json.dumps(v.get("metadata", {}))
+
+            cursor.execute(
+                """
+                INSERT INTO visualizations (id, node_id, topic_id, title, visualization_type, code, description, explanation, format, metadata_json, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (vis_id, node_id, topic_id, title, vis_type, code, description, explanation, fmt, meta, now, now)
+            )
+    conn.close()
+    return get_visualizations_for_node(node_id)
+
+
+def create_visualization(
+    node_id: str,
+    topic_id: str,
+    data: Dict[str, Any]
+) -> Dict[str, Any]:
+    vis_id = data.get("id") or str(uuid.uuid4())
+    now = now_iso()
+    title = data.get("title", "Concept Visualization").strip()
+    vis_type = data.get("visualization_type", "flowchart").strip()
+    code = data.get("code", "").strip()
+    description = data.get("description", "").strip()
+    explanation = data.get("explanation", "").strip()
+    fmt = data.get("format", "mermaid")
+    meta = json.dumps(data.get("metadata", {}))
+
+    conn = get_connection()
+    with conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            INSERT INTO visualizations (id, node_id, topic_id, title, visualization_type, code, description, explanation, format, metadata_json, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (vis_id, node_id, topic_id, title, vis_type, code, description, explanation, fmt, meta, now, now)
+        )
+    conn.close()
+    return get_visualization_by_id(vis_id)  # type: ignore
+
+
+def update_visualization(
+    vis_id: str,
+    title: Optional[str] = None,
+    code: Optional[str] = None,
+    description: Optional[str] = None,
+    explanation: Optional[str] = None,
+    visualization_type: Optional[str] = None,
+    metadata: Optional[Dict[str, Any]] = None
+) -> Optional[Dict[str, Any]]:
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM visualizations WHERE id = ?", (vis_id,))
+    row = cursor.fetchone()
+    if not row:
+        conn.close()
+        return None
+    curr = dict(row)
+
+    new_title = title if title is not None else curr["title"]
+    new_code = code if code is not None else curr["code"]
+    new_desc = description if description is not None else curr.get("description", "")
+    new_expl = explanation if explanation is not None else curr.get("explanation", "")
+    new_type = visualization_type if visualization_type is not None else curr["visualization_type"]
+    if metadata is not None:
+        new_meta = json.dumps(metadata)
+    else:
+        new_meta = curr.get("metadata_json") or "{}"
+
+    now = now_iso()
+    with conn:
+        cursor.execute(
+            """
+            UPDATE visualizations
+            SET title = ?, code = ?, description = ?, explanation = ?, visualization_type = ?, metadata_json = ?, updated_at = ?
+            WHERE id = ?
+            """,
+            (new_title, new_code, new_desc, new_expl, new_type, new_meta, now, vis_id)
+        )
+    conn.close()
+    return get_visualization_by_id(vis_id)
+
+
+def delete_visualization(vis_id: str) -> bool:
+    conn = get_connection()
+    with conn:
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM visualizations WHERE id = ?", (vis_id,))
+        deleted = cursor.rowcount > 0
+    conn.close()
+    return deleted
+
+
+def delete_visualizations_for_node(node_id: str) -> bool:
+    conn = get_connection()
+    with conn:
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM visualizations WHERE node_id = ?", (node_id,))
+        deleted = cursor.rowcount > 0
+    conn.close()
+    return deleted
+
+
+
 

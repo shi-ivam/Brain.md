@@ -1,0 +1,75 @@
+/**
+ * Badges, Tags & Key Indicators
+ */
+
+/* Minimalist Badges & Tags */
+.obsidian-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 8px;
+  border-radius: var(--radius-sm);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-xs, 12px);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.badge-concept {
+  background-color: var(--tag-concept-bg);
+  color: var(--tag-concept-text);
+  border: 1px solid var(--tag-concept-border);
+}
+
+.badge-prereq {
+  background-color: var(--tag-prereq-bg);
+  color: var(--tag-prereq-text);
+  border: 1px solid var(--tag-prereq-border);
+}
+
+.badge-subtopic {
+  background-color: var(--tag-subtopic-bg);
+  color: var(--tag-subtopic-text);
+  border: 1px solid var(--tag-subtopic-border);
+}
+
+.badge-note {
+  background-color: var(--tag-note-bg);
+  color: var(--tag-note-text);
+  border: 1px solid var(--tag-note-border);
+}
+
+.badge-question {
+  background-color: var(--tag-question-bg);
+  color: var(--tag-question-text);
+  border: 1px solid var(--tag-question-border);
+}
+
+.badge-quiz {
+  background-color: var(--tag-quiz-bg);
+  color: var(--tag-quiz-text);
+  border: 1px solid var(--tag-quiz-border);
+}
+
+/* Resource Badges */
+.yt-badge,
+.pdf-badge {
+  font-size: var(--font-size-2xs, 11px);
+  font-weight: 600;
+  padding: 2px 5px;
+  border-radius: 3px;
+  background: rgba(0, 0, 0, 0.3);
+}
+
+/* Keystroke Micro-UI */
+kbd {
+  font-family: var(--font-mono);
+  font-size: var(--font-size-2xs, 11px);
+  padding: 2px 6px;
+  background-color: var(--bg-card);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+}

@@ -77,9 +77,9 @@ export const Breadcrumbs: React.FC<BreadcrumbsProps> = ({
         backdropFilter: 'blur(10px)',
         border: '1px solid var(--border-subtle)',
         borderRadius: '7px',
-        padding: '5px 10px',
+        padding: '6px 12px',
         boxShadow: '0 4px 16px rgba(0, 0, 0, 0.35)',
-        fontSize: '13px',
+        fontSize: '14.5px',
         color: 'var(--text-secondary)',
         maxWidth: 'calc(100vw - 480px)',
         zIndex: 30,
@@ -95,7 +95,7 @@ export const Breadcrumbs: React.FC<BreadcrumbsProps> = ({
           title="Back (Alt+Left)"
           className="obsidian-btn-subtle"
           style={{
-            padding: '3px 6px',
+            padding: '4px 7px',
             opacity: canGoBack ? 1 : 0.35,
             cursor: canGoBack ? 'pointer' : 'default',
             display: 'flex',
@@ -104,7 +104,7 @@ export const Breadcrumbs: React.FC<BreadcrumbsProps> = ({
             borderRadius: '4px',
           }}
         >
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
             <polyline points="15 18 9 12 15 6" />
           </svg>
         </button>
@@ -116,7 +116,7 @@ export const Breadcrumbs: React.FC<BreadcrumbsProps> = ({
           title="Forward (Alt+Right)"
           className="obsidian-btn-subtle"
           style={{
-            padding: '3px 6px',
+            padding: '4px 7px',
             opacity: canGoForward ? 1 : 0.35,
             cursor: canGoForward ? 'pointer' : 'default',
             display: 'flex',
@@ -125,13 +125,13 @@ export const Breadcrumbs: React.FC<BreadcrumbsProps> = ({
             borderRadius: '4px',
           }}
         >
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
             <polyline points="9 18 15 12 9 6" />
           </svg>
         </button>
       </div>
 
-      <div style={{ width: '1px', height: '14px', backgroundColor: 'var(--border-subtle)', margin: '0 2px' }} />
+      <div style={{ width: '1px', height: '16px', backgroundColor: 'var(--border-subtle)', margin: '0 2px' }} />
 
       {/* Trail: Topic Title */}
       <button
@@ -143,19 +143,19 @@ export const Breadcrumbs: React.FC<BreadcrumbsProps> = ({
           backgroundColor: 'transparent',
           color: visibleTrail.length === 0 ? 'var(--text-primary)' : 'var(--text-secondary)',
           fontWeight: visibleTrail.length === 0 ? 600 : 500,
-          padding: '2px 6px',
+          padding: '3px 7px',
           borderRadius: '4px',
           cursor: 'pointer',
           display: 'flex',
           alignItems: 'center',
-          gap: '5px',
-          maxWidth: '180px',
+          gap: '6px',
+          maxWidth: '200px',
           whiteSpace: 'nowrap',
           overflow: 'hidden',
           textOverflow: 'ellipsis',
         }}
       >
-        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
           <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" />
           <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" />
         </svg>
@@ -167,7 +167,7 @@ export const Breadcrumbs: React.FC<BreadcrumbsProps> = ({
         const isLast = idx === visibleTrail.length - 1;
         return (
           <React.Fragment key={`${item.id}-${idx}`}>
-            <span style={{ color: 'var(--text-muted)', fontSize: '11px', userSelect: 'none' }}>
+            <span style={{ color: 'var(--text-muted)', fontSize: '13px', userSelect: 'none' }}>
               ›
             </span>
             <button
@@ -179,10 +179,10 @@ export const Breadcrumbs: React.FC<BreadcrumbsProps> = ({
                 backgroundColor: isLast ? 'rgba(255, 255, 255, 0.06)' : 'transparent',
                 color: isLast ? 'var(--text-primary)' : 'var(--text-secondary)',
                 fontWeight: isLast ? 600 : 400,
-                padding: '2px 6px',
+                padding: '3px 7px',
                 borderRadius: '4px',
                 cursor: 'pointer',
-                maxWidth: '150px',
+                maxWidth: '160px',
                 whiteSpace: 'nowrap',
                 overflow: 'hidden',
                 textOverflow: 'ellipsis',
@@ -197,25 +197,27 @@ export const Breadcrumbs: React.FC<BreadcrumbsProps> = ({
       {/* Active Node Mastery Badge */}
       {currentNode && (
         <>
-          <div style={{ width: '1px', height: '14px', backgroundColor: 'var(--border-subtle)', margin: '0 4px' }} />
+          <div style={{ width: '1px', height: '16px', backgroundColor: 'var(--border-subtle)', margin: '0 4px' }} />
           <div
             title={`Spaced Repetition Mastery: ${masteryScore}% (Ease: ${currentNode.ease_factor?.toFixed(2) ?? '2.50'}, Interval: ${currentNode.review_interval ?? 1}d)`}
             style={{
               display: 'inline-flex',
               alignItems: 'center',
-              gap: '4px',
+              gap: '5px',
               backgroundColor: masteryStyle.bg,
               border: `1px solid ${masteryStyle.border}`,
               color: masteryStyle.text,
-              fontSize: '11px',
+              fontSize: '12px',
               fontFamily: 'var(--font-mono)',
               fontWeight: 500,
-              padding: '2px 8px',
+              padding: '3px 8px',
               borderRadius: '12px',
               whiteSpace: 'nowrap',
             }}
           >
-            <span>★</span>
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor" stroke="none">
+              <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
+            </svg>
             <span>Mastery {masteryScore}%</span>
           </div>
         </>
@@ -228,12 +230,12 @@ export const Breadcrumbs: React.FC<BreadcrumbsProps> = ({
           title="Copy canonical deep link URL"
           className="obsidian-btn-subtle"
           style={{
-            padding: '3px 6px',
+            padding: '3px 7px',
             marginLeft: '2px',
             display: 'flex',
             alignItems: 'center',
             gap: '4px',
-            fontSize: '11px',
+            fontSize: '12.5px',
             color: linkCopied ? '#4ade80' : 'var(--text-muted)',
             borderRadius: '4px',
           }}

@@ -1,13 +1,17 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { GraphNode, DifficultyLevel, KnowledgeGraphData } from '../../types';
+import { GraphNode, DifficultyLevel, KnowledgeGraphData, NodeResource } from '../../types';
 import { saveNodeNote, synthesizeStudyNote, syncWikilinks } from '../../services/api';
 import { renderMarkdownWithMath, slugifyHeader } from '../../utils/mathRenderer';
+import { SlideViewerModal } from '../Slides/SlideViewerModal';
+import mermaid from 'mermaid';
 
 interface NoteTabProps {
   node: GraphNode;
   nodes?: GraphNode[];
   difficulty: DifficultyLevel;
   targetSection?: string;
+  resources?: NodeResource[];
+  onOpenResourcesTab?: () => void;
   onNodeUpdated: (nodeId: string, newContent: string) => void;
   onDecomposeQuestion?: (nodeId: string) => Promise<void>;
   onSelectNode?: (node: GraphNode) => void;
@@ -19,6 +23,8 @@ export const NoteTab: React.FC<NoteTabProps> = ({
   nodes = [],
   difficulty,
   targetSection,
+  resources = [],
+  onOpenResourcesTab,
   onNodeUpdated,
   onDecomposeQuestion,
   onSelectNode,
@@ -39,6 +45,9 @@ export const NoteTab: React.FC<NoteTabProps> = ({
   // Wikilink Syncing state
   const [isSyncing, setIsSyncing] = useState(false);
   const [syncToast, setSyncToast] = useState<string | null>(null);
+
+  // Study Slides Viewer state
+  const [isSlidesOpen, setIsSlidesOpen] = useState(false);
 
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const markdownContainerRef = useRef<HTMLDivElement>(null);
@@ -114,6 +123,149 @@ export const NoteTab: React.FC<NoteTabProps> = ({
       return () => clearTimeout(timer);
     }
   }, [targetSection, isEditing, node.id]);
+
+  // Dynamically render any embedded ```mermaid and ```html simulation code blocks in the note
+  useEffect(() => {
+    if (!isEditing && markdownContainerRef.current) {
+      const mermaidBlocks = markdownContainerRef.current.querySelectorAll('pre > code.language-mermaid');
+      mermaidBlocks.forEach(async (codeEl, idx) => {
+        const rawCode = codeEl.textContent || '';
+        if (!rawCode.trim()) return;
+        const parentPre = codeEl.parentElement;
+        if (!parentPre || parentPre.getAttribute('data-mermaid-rendered') === 'true') return;
+        parentPre.setAttribute('data-mermaid-rendered', 'true');
+        try {
+          const id = `mermaid-note-${Math.random().toString(36).substring(2, 9)}-${idx}`;
+          const { svg } = await mermaid.render(id, rawCode.trim());
+          const wrapper = document.createElement('div');
+          wrapper.className = 'note-mermaid-diagram';
+          wrapper.style.margin = '16px 0';
+          wrapper.style.padding = '12px';
+          wrapper.style.backgroundColor = 'var(--bg-card, #222226)';
+          wrapper.style.border = '1px solid var(--border-subtle, #2b2b32)';
+          wrapper.style.borderRadius = '8px';
+          wrapper.style.display = 'flex';
+          wrapper.style.justifyContent = 'center';
+          wrapper.style.overflowX = 'auto';
+          wrapper.innerHTML = svg;
+          parentPre.replaceWith(wrapper);
+        } catch (err) {
+          console.warn('Could not render note mermaid diagram:', err);
+        }
+      });
+
+      const htmlBlocks = markdownContainerRef.current.querySelectorAll('pre > code.language-html');
+      htmlBlocks.forEach((codeEl) => {
+        const rawCode = codeEl.textContent || '';
+        if (!rawCode.trim()) return;
+        const isSimulation =
+          rawCode.includes('<!DOCTYPE html>') ||
+          rawCode.includes('<canvas') ||
+          (rawCode.includes('<html') && rawCode.includes('<script>'));
+        if (!isSimulation) return;
+        const parentPre = codeEl.parentElement;
+        if (!parentPre || parentPre.getAttribute('data-sim-rendered') === 'true') return;
+        parentPre.setAttribute('data-sim-rendered', 'true');
+
+        const wrapper = document.createElement('div');
+        wrapper.className = 'note-html-simulation-embed';
+        wrapper.style.margin = '16px 0';
+        wrapper.style.backgroundColor = 'var(--bg-card, #222226)';
+        wrapper.style.border = '1px solid var(--border-subtle, #2b2b32)';
+        wrapper.style.borderRadius = '8px';
+        wrapper.style.overflow = 'hidden';
+
+        const header = document.createElement('div');
+        header.style.display = 'flex';
+        header.style.alignItems = 'center';
+        header.style.justifyContent = 'space-between';
+        header.style.padding = '8px 12px';
+        header.style.backgroundColor = 'rgba(255, 255, 255, 0.02)';
+        header.style.borderBottom = '1px solid var(--border-subtle, #2b2b32)';
+        header.style.fontSize = '12px';
+
+        const label = document.createElement('div');
+        label.style.display = 'flex';
+        label.style.alignItems = 'center';
+        label.style.gap = '6px';
+        label.style.color = 'var(--text-secondary, #9c9ca3)';
+        label.innerHTML = `
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polygon points="5 3 19 12 5 21 5 3"/>
+          </svg>
+          <span style="font-family: var(--font-mono, monospace); font-weight: 500;">Interactive Simulation</span>
+        `;
+
+        const actions = document.createElement('div');
+        actions.style.display = 'flex';
+        actions.style.gap = '6px';
+
+        const restartBtn = document.createElement('button');
+        restartBtn.className = 'obsidian-btn-subtle';
+        restartBtn.style.fontSize = '11px';
+        restartBtn.style.padding = '3px 8px';
+        restartBtn.textContent = 'Restart';
+
+        const toggleCodeBtn = document.createElement('button');
+        toggleCodeBtn.className = 'obsidian-btn-subtle';
+        toggleCodeBtn.style.fontSize = '11px';
+        toggleCodeBtn.style.padding = '3px 8px';
+        toggleCodeBtn.textContent = 'View Code';
+
+        actions.appendChild(restartBtn);
+        actions.appendChild(toggleCodeBtn);
+        header.appendChild(label);
+        header.appendChild(actions);
+
+        const iframeContainer = document.createElement('div');
+        iframeContainer.style.position = 'relative';
+        iframeContainer.style.width = '100%';
+        iframeContainer.style.height = '380px';
+        iframeContainer.style.backgroundColor = '#161618';
+
+        const iframe = document.createElement('iframe');
+        iframe.sandbox.add('allow-scripts');
+        iframe.srcdoc = rawCode;
+        iframe.style.width = '100%';
+        iframe.style.height = '100%';
+        iframe.style.border = 'none';
+        iframe.style.display = 'block';
+
+        iframeContainer.appendChild(iframe);
+
+        const codePre = document.createElement('pre');
+        codePre.style.display = 'none';
+        codePre.style.margin = '0';
+        codePre.style.padding = '12px';
+        codePre.style.maxHeight = '280px';
+        codePre.style.overflowY = 'auto';
+        codePre.style.fontSize = '12px';
+        codePre.style.backgroundColor = 'var(--bg-primary, #161618)';
+        codePre.style.borderTop = '1px solid var(--border-subtle, #2b2b32)';
+        const codeInner = document.createElement('code');
+        codeInner.className = 'language-html';
+        codeInner.textContent = rawCode;
+        codePre.appendChild(codeInner);
+
+        restartBtn.onclick = () => {
+          iframe.srcdoc = rawCode;
+        };
+
+        let showCode = false;
+        toggleCodeBtn.onclick = () => {
+          showCode = !showCode;
+          codePre.style.display = showCode ? 'block' : 'none';
+          toggleCodeBtn.textContent = showCode ? 'Hide Code' : 'View Code';
+        };
+
+        wrapper.appendChild(header);
+        wrapper.appendChild(iframeContainer);
+        wrapper.appendChild(codePre);
+
+        parentPre.replaceWith(wrapper);
+      });
+    }
+  }, [content, isEditing]);
 
   // Autocomplete suggestions filtered by query
   const suggestions = nodes
@@ -277,8 +429,8 @@ export const NoteTab: React.FC<NoteTabProps> = ({
               disabled={isDecomposing}
               className="obsidian-btn"
               style={{
-                fontSize: '12px',
-                padding: '4px 10px',
+                fontSize: '13.5px',
+                padding: '5px 12px',
                 borderColor: 'var(--tag-question-border)',
                 color: 'var(--tag-question-text)',
                 backgroundColor: 'var(--tag-question-bg)',
@@ -291,7 +443,7 @@ export const NoteTab: React.FC<NoteTabProps> = ({
           <button
             onClick={() => setIsEditing(!isEditing)}
             className="obsidian-btn"
-            style={{ fontSize: '12px', padding: '4px 10px' }}
+            style={{ fontSize: '13.5px', padding: '5px 12px' }}
           >
             {isEditing ? 'Preview Note' : 'Edit Markdown'}
           </button>
@@ -300,32 +452,142 @@ export const NoteTab: React.FC<NoteTabProps> = ({
               onClick={handleSave}
               disabled={isSaving}
               className="obsidian-btn obsidian-btn-primary"
-              style={{ fontSize: '12px', padding: '4px 10px' }}
+              style={{ fontSize: '13.5px', padding: '5px 12px' }}
             >
               {isSaving ? 'Saving...' : 'Save Changes'}
             </button>
           )}
         </div>
 
-        <button
-          onClick={handleSynthesize}
-          disabled={isSynthesizing}
-          className="obsidian-btn"
-          style={{
-            fontSize: '12px',
-            padding: '4px 10px',
-            borderColor: 'var(--accent-purple)',
-            color: 'var(--tag-concept-text)',
-          }}
-          title="Synthesizes publication-grade Obsidian study note with LaTeX and callouts"
-        >
-          {isSynthesizing ? 'Synthesizing Note...' : 'Synthesize Deep Note'}
-        </button>
+        <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+          <button
+            onClick={() => setIsSlidesOpen(true)}
+            className="obsidian-btn"
+            style={{
+              fontSize: '13.5px',
+              padding: '5px 12px',
+              borderColor: 'rgba(56, 189, 248, 0.4)',
+              color: '#38bdf8',
+              backgroundColor: 'rgba(56, 189, 248, 0.08)',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+            }}
+            title="View and download academic study slides"
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <rect x="2" y="3" width="20" height="14" rx="2" />
+              <line x1="8" y1="21" x2="16" y2="21" />
+              <line x1="12" y1="17" x2="12" y2="21" />
+            </svg>
+            <span>Study Slides</span>
+          </button>
+
+          <button
+            onClick={handleSynthesize}
+            disabled={isSynthesizing}
+            className="obsidian-btn"
+            style={{
+              fontSize: '13.5px',
+              padding: '5px 12px',
+              borderColor: 'var(--accent-purple)',
+              color: 'var(--tag-concept-text)',
+            }}
+            title="Synthesizes publication-grade Obsidian study note with LaTeX and callouts"
+          >
+            {isSynthesizing ? 'Synthesizing Note...' : 'Synthesize Deep Note'}
+          </button>
+        </div>
       </div>
 
       {saveSuccess && (
-        <div style={{ fontSize: '11px', color: '#4ade80', fontFamily: 'var(--font-mono)' }}>
+        <div style={{ fontSize: '12.5px', color: '#4ade80', fontFamily: 'var(--font-mono)' }}>
           ✓ Saved to SQLite database
+        </div>
+      )}
+
+      {/* Attached Resources Bar */}
+      {resources && resources.length > 0 && (
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px',
+            padding: '7px 10px',
+            borderRadius: '6px',
+            backgroundColor: 'rgba(255, 255, 255, 0.03)',
+            border: '1px solid var(--border-subtle)',
+            flexWrap: 'wrap',
+          }}
+        >
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '4px',
+              fontSize: '12px',
+              fontWeight: 600,
+              color: 'var(--text-muted)',
+              textTransform: 'uppercase',
+              letterSpacing: '0.5px',
+            }}
+          >
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48" />
+            </svg>
+            <span>Attached Materials ({resources.length}):</span>
+          </div>
+          <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', alignItems: 'center', flex: 1 }}>
+            {resources.map((res) => (
+              <button
+                key={res.id}
+                onClick={onOpenResourcesTab}
+                className="obsidian-btn"
+                style={{
+                  fontSize: '12px',
+                  padding: '3px 9px',
+                  borderRadius: '12px',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '4px',
+                  maxWidth: '240px',
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  whiteSpace: 'nowrap',
+                }}
+                title={`${res.title} - Click to view in Resources tab`}
+              >
+                <span style={{ display: 'inline-flex', alignItems: 'center' }}>
+                  {res.resource_type === 'youtube' ? (
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#ef4444" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <polygon points="5 3 19 12 5 21 5 3" />
+                    </svg>
+                  ) : res.resource_type === 'pdf' ? (
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#f87171" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                      <polyline points="14 2 14 8 20 8" />
+                    </svg>
+                  ) : (
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--accent-purple-light)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
+                      <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
+                    </svg>
+                  )}
+                </span>
+                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{res.title}</span>
+              </button>
+            ))}
+            {onOpenResourcesTab && (
+              <button
+                onClick={onOpenResourcesTab}
+                className="obsidian-btn-subtle"
+                style={{ fontSize: '12px', padding: '3px 7px', color: 'var(--accent-purple-light)' }}
+                title="Open Resources tab to attach more"
+              >
+                + Add / Manage
+              </button>
+            )}
+          </div>
         </div>
       )}
 
@@ -348,9 +610,9 @@ export const NoteTab: React.FC<NoteTabProps> = ({
                 borderRadius: '6px',
                 color: 'var(--text-primary)',
                 fontFamily: 'var(--font-mono)',
-                fontSize: '12.5px',
-                lineHeight: '1.6',
-                padding: '12px',
+                fontSize: '14.5px',
+                lineHeight: '1.65',
+                padding: '14px',
                 outline: 'none',
                 resize: 'none',
                 boxSizing: 'border-box',
@@ -366,7 +628,7 @@ export const NoteTab: React.FC<NoteTabProps> = ({
                   bottom: '16px',
                   left: '12px',
                   right: '12px',
-                  maxHeight: '190px',
+                  maxHeight: '200px',
                   overflowY: 'auto',
                   backgroundColor: 'var(--bg-panel)',
                   border: '1px solid var(--border-active)',
@@ -380,8 +642,8 @@ export const NoteTab: React.FC<NoteTabProps> = ({
               >
                 <div
                   style={{
-                    padding: '4px 8px',
-                    fontSize: '11px',
+                    padding: '5px 10px',
+                    fontSize: '12px',
                     color: 'var(--text-muted)',
                     borderBottom: '1px solid var(--border-subtle)',
                     display: 'flex',
@@ -396,7 +658,7 @@ export const NoteTab: React.FC<NoteTabProps> = ({
                     key={s.id}
                     onClick={() => insertWikilink(s.title)}
                     style={{
-                      padding: '6px 10px',
+                      padding: '7px 12px',
                       borderRadius: '4px',
                       cursor: 'pointer',
                       display: 'flex',
@@ -404,12 +666,12 @@ export const NoteTab: React.FC<NoteTabProps> = ({
                       justifyContent: 'space-between',
                       backgroundColor: idx === autocompleteIndex ? 'rgba(139, 123, 245, 0.2)' : 'transparent',
                       color: idx === autocompleteIndex ? '#c4b5fd' : 'var(--text-primary)',
-                      fontSize: '12.5px',
+                      fontSize: '13.5px',
                     }}
                     onMouseEnter={() => setAutocompleteIndex(idx)}
                   >
                     <span style={{ fontWeight: 500 }}>[[{s.title}]]</span>
-                    <span className={`obsidian-badge badge-${s.node_type}`} style={{ fontSize: '10px', padding: '1px 5px' }}>
+                    <span className={`obsidian-badge badge-${s.node_type}`} style={{ fontSize: '11px', padding: '2px 6px' }}>
                       {s.node_type}
                     </span>
                   </div>
@@ -443,8 +705,8 @@ export const NoteTab: React.FC<NoteTabProps> = ({
           disabled={isSyncing}
           className="obsidian-btn"
           style={{
-            fontSize: '12px',
-            padding: '5px 12px',
+            fontSize: '13.5px',
+            padding: '6px 14px',
             display: 'inline-flex',
             alignItems: 'center',
             gap: '6px',
@@ -453,7 +715,7 @@ export const NoteTab: React.FC<NoteTabProps> = ({
           }}
           title="Parses [[Wikilinks]] across notes in this topic and generates knowledge graph edges"
         >
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
             <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
             <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
           </svg>
@@ -463,7 +725,7 @@ export const NoteTab: React.FC<NoteTabProps> = ({
         {syncToast && (
           <div
             style={{
-              fontSize: '12px',
+              fontSize: '13px',
               color: '#4ade80',
               fontFamily: 'var(--font-mono)',
               display: 'flex',
@@ -476,6 +738,14 @@ export const NoteTab: React.FC<NoteTabProps> = ({
           </div>
         )}
       </div>
+
+      {/* Interactive Study Slides Viewer Modal */}
+      <SlideViewerModal
+        node={node}
+        difficulty={difficulty}
+        isOpen={isSlidesOpen}
+        onClose={() => setIsSlidesOpen(false)}
+      />
     </div>
   );
 };

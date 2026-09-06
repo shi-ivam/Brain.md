@@ -1,0 +1,398 @@
+/**
+ * Context Menus & Popovers
+ * Specialized styling for Node, Edge/Link, and Selection Context Menus
+ */
+
+/* Universal Context Menu Container */
+.obsidian-context-menu,
+.obsidian-menu {
+  position: fixed;
+  background-color: var(--bg-panel);
+  border: 1px solid var(--border-active);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-popover);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  z-index: 1000;
+  padding: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  user-select: none;
+  animation: popoverIn 140ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* Context Menu Header */
+.context-menu-header {
+  padding: 6px 8px 8px 8px;
+  border-bottom: 1px solid var(--border-subtle);
+  margin-bottom: 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.context-menu-header-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.context-menu-title {
+  font-size: var(--font-size-2xs, 11.5px);
+  font-family: var(--font-mono);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.context-menu-divider {
+  height: 1px;
+  background-color: var(--border-subtle);
+  margin: 4px 0;
+}
+
+/* Context Menu Items */
+.context-menu-item {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 9px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+  font-size: var(--font-size-sm, 13.5px);
+  text-align: left;
+  cursor: pointer;
+  outline: none;
+  transition: background-color 140ms ease, border-color 140ms ease, color 140ms ease;
+}
+
+.context-menu-item:hover {
+  background-color: var(--bg-card);
+  border-color: var(--border-subtle);
+}
+
+.context-menu-item:active {
+  transform: scale(0.99);
+}
+
+.context-menu-item:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.context-menu-item.danger {
+  color: var(--error-red);
+}
+
+.context-menu-item.danger:hover {
+  background-color: var(--error-red-subtle);
+  border-color: var(--error-red-border);
+  color: #fca5a5;
+}
+
+/* =========================================================
+   EDGE / LINK CONTEXT MENU SPECIFIC STYLES
+   ========================================================= */
+
+.edge-context-menu {
+  width: 300px;
+  transition: width 150ms ease;
+}
+
+.edge-context-menu.expanded {
+  width: 340px;
+}
+
+/* Header & Connection Path */
+.edge-menu-header {
+  padding: 8px 10px;
+  background-color: rgba(255, 255, 255, 0.02);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-subtle);
+  margin-bottom: 4px;
+}
+
+.edge-menu-topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 6px;
+}
+
+.edge-menu-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: var(--font-size-2xs, 10.5px);
+  font-family: var(--font-mono);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+}
+
+.edge-menu-badge {
+  font-size: var(--font-size-2xs, 10.5px);
+  font-family: var(--font-mono);
+  font-weight: 500;
+  padding: 2px 7px;
+  border-radius: 3px;
+  background-color: var(--bg-input);
+  color: var(--accent-primary);
+  border: 1px solid var(--border-subtle);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.edge-menu-path {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--font-size-xs, 12.5px);
+  line-height: 1.35;
+}
+
+.edge-node-pill {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 500;
+  padding: 2px 6px;
+  background-color: var(--bg-card);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  max-width: 125px;
+}
+
+.edge-node-source {
+  color: var(--accent-secondary);
+}
+
+.edge-node-target {
+  color: var(--accent-primary);
+}
+
+.edge-node-arrow {
+  color: var(--text-muted);
+  font-size: var(--font-size-xs, 12.5px);
+  flex-shrink: 0;
+}
+
+.edge-menu-label-text {
+  font-size: var(--font-size-2xs, 11px);
+  color: var(--text-muted);
+  margin-top: 4px;
+  font-style: italic;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* AI Bridge Gap Feature Item */
+.edge-menu-btn-bridge {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  background: linear-gradient(135deg, rgba(99, 102, 241, 0.12) 0%, rgba(139, 123, 245, 0.08) 100%);
+  border: 1px solid var(--accent-indigo-border);
+  border-radius: var(--radius-md);
+  color: var(--text-primary);
+  cursor: pointer;
+  text-align: left;
+  transition: all 150ms ease;
+  width: 100%;
+}
+
+.edge-menu-btn-bridge:hover {
+  background: linear-gradient(135deg, rgba(99, 102, 241, 0.22) 0%, rgba(139, 123, 245, 0.16) 100%);
+  border-color: var(--accent-purple);
+  box-shadow: 0 0 12px var(--accent-purple-glow);
+}
+
+.edge-menu-btn-bridge:active {
+  transform: scale(0.985);
+}
+
+.edge-menu-icon-box {
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-sm);
+  background-color: rgba(99, 102, 241, 0.2);
+  color: var(--accent-primary);
+  flex-shrink: 0;
+}
+
+.edge-menu-btn-bridge:hover .edge-menu-icon-box {
+  background-color: var(--accent-purple);
+  color: #ffffff;
+}
+
+.edge-menu-action-btn {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 10px;
+  background-color: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  color: var(--text-primary);
+  cursor: pointer;
+  text-align: left;
+  transition: all 140ms ease;
+  width: 100%;
+}
+
+.edge-menu-action-btn:hover {
+  background-color: var(--bg-card);
+  border-color: var(--border-subtle);
+}
+
+.edge-menu-action-btn:active {
+  transform: scale(0.985);
+}
+
+.edge-menu-action-icon {
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-sm);
+  background-color: var(--bg-card);
+  border: 1px solid var(--border-subtle);
+  color: var(--text-secondary);
+  flex-shrink: 0;
+}
+
+.edge-menu-action-btn:hover .edge-menu-action-icon {
+  border-color: var(--border-active);
+  color: var(--text-primary);
+}
+
+.edge-menu-action-btn.danger {
+  color: var(--error-red);
+}
+
+.edge-menu-action-btn.danger .edge-menu-action-icon {
+  color: var(--error-red);
+  background-color: var(--error-red-subtle);
+  border-color: var(--error-red-border);
+}
+
+.edge-menu-action-btn.danger:hover {
+  background-color: var(--error-red-subtle);
+  border-color: var(--error-red-border);
+  color: #fca5a5;
+}
+
+.edge-menu-text-col {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.edge-menu-item-title {
+  font-size: var(--font-size-sm, 13.5px);
+  font-weight: 500;
+  color: inherit;
+  line-height: 1.35;
+}
+
+.edge-menu-item-sub {
+  font-size: var(--font-size-2xs, 11px);
+  color: var(--text-muted);
+  line-height: 1.35;
+}
+
+/* Sub-views (Bridge, Insert, Edit) Form Styling */
+.edge-view-container {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 4px;
+}
+
+.edge-view-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-bottom: 4px;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.edge-view-title {
+  font-size: var(--font-size-sm, 13.5px);
+  font-weight: 600;
+  color: var(--text-primary);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* Stepping Stones Pill Selector */
+.edge-pill-group {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 4px;
+  background-color: var(--bg-input);
+  padding: 3px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-subtle);
+}
+
+.edge-pill-btn {
+  padding: 5px 0;
+  font-size: var(--font-size-xs, 12px);
+  font-family: var(--font-sans);
+  font-weight: 500;
+  text-align: center;
+  border-radius: var(--radius-sm);
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all 140ms ease;
+  outline: none;
+}
+
+.edge-pill-btn:hover {
+  color: var(--text-primary);
+  background-color: rgba(255, 255, 255, 0.04);
+}
+
+.edge-pill-btn.active {
+  background-color: var(--accent-purple);
+  color: #ffffff;
+  font-weight: 600;
+  border-color: var(--accent-purple);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
+}
+
+/* Error Banner */
+.edge-menu-error {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  padding: 6px 8px;
+  background-color: var(--error-red-subtle);
+  border: 1px solid var(--error-red-border);
+  border-radius: var(--radius-sm);
+  font-size: var(--font-size-xs, 12px);
+  color: #fca5a5;
+  line-height: 1.4;
+}

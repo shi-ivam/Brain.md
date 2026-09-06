@@ -270,3 +270,207 @@ class CommunityGroupInfo(BaseModel):
 class CommunityGroupResponse(BaseModel):
     topic_id: str
     communities: List[CommunityGroupInfo]
+
+class ResourceCreate(BaseModel):
+    title: str
+    resource_type: str = "url"  # 'youtube', 'pdf', 'url', 'other'
+    url: str
+    file_path: Optional[str] = None
+    file_size: Optional[int] = None
+    thumbnail_url: Optional[str] = None
+    notes: Optional[str] = ""
+    metadata: Optional[Dict[str, Any]] = None
+
+class ResourceUpdate(BaseModel):
+    title: Optional[str] = None
+    notes: Optional[str] = None
+    metadata: Optional[Dict[str, Any]] = None
+
+class ResourceResponse(BaseModel):
+    id: str
+    node_id: str
+    topic_id: str
+    title: str
+    resource_type: str
+    url: str
+    file_path: Optional[str] = None
+    file_size: Optional[int] = None
+    thumbnail_url: Optional[str] = None
+    notes: Optional[str] = ""
+    metadata: Optional[Dict[str, Any]] = None
+    created_at: str
+    updated_at: str
+
+class ResourceSuggestRequest(BaseModel):
+    difficulty: Optional[str] = "intermediate"
+
+class SuggestedResourceItem(BaseModel):
+    title: str = Field(description="Title of video, lecture notes PDF, or academic resource")
+    resource_type: str = Field(description="'youtube', 'pdf', or 'url'")
+    url: str = Field(description="URL to the resource (YouTube link/search query, PDF link, or paper URL)")
+    notes: str = Field(default="", description="Key takeaways or why this resource is high-yield")
+    author: Optional[str] = Field(default="", description="Educator, channel, author or institution (e.g. 3Blue1Brown, MIT OCW, Stanford)")
+
+class SuggestedResourcesResult(BaseModel):
+    concept: str
+    resources: List[SuggestedResourceItem]
+
+# Slide Generation & Export Schemas
+class SlideItem(BaseModel):
+    title: str = Field(description="Slide title, crisp and punchy")
+    slide_type: str = Field(description="One of: 'title', 'concept', 'math', 'mechanism', 'applications', 'pitfalls', 'summary'")
+    subtitle: Optional[str] = Field(default="", description="Subtitle or focus domain for the slide")
+    bullets: List[str] = Field(description="3 to 5 clear, high-yield bullet points with LaTeX formulas where applicable")
+    callout: Optional[str] = Field(default=None, description="Important highlight, theorem, law, or warning callout")
+    formula: Optional[str] = Field(default=None, description="Primary mathematical equation in LaTeX (e.g. $dX_t = \\mu dt + \\sigma dW_t$) if applicable")
+    speaker_notes: str = Field(description="In-depth study narration or lecture notes explaining this slide in detail for the learner")
+    quick_check: Optional[str] = Field(default=None, description="A quick conceptual self-check question or active recall prompt")
+
+class SlideDeckResult(BaseModel):
+    concept_title: str = Field(description="The concept name")
+    deck_title: str = Field(description="An academic presentation title for the slide deck")
+    slides: List[SlideItem] = Field(description="List of 6 to 8 structured pedagogical study slides")
+
+class SlideDeckResponse(BaseModel):
+    id: str
+    node_id: str
+    topic_id: str
+    deck_title: str
+    slides: List[SlideItem]
+    created_at: str
+    updated_at: str
+
+class SlideGenerateRequest(BaseModel):
+    force_refresh: Optional[bool] = False
+    difficulty: Optional[str] = "intermediate"
+
+# ==================== Link Bridging Schemas ====================
+class EdgeBridgeRequest(BaseModel):
+    bridge_count: Optional[int] = Field(default=2, description="Number of intermediate stepping-stone nodes to create (1 to 3)")
+    num_bridge_nodes: Optional[int] = Field(default=None, description="Optional alias for bridge_count")
+    difficulty: Optional[str] = "intermediate"
+    focus_note: Optional[str] = Field(default="", description="Optional user note explaining what conceptual gap feels difficult")
+
+class BridgeNodeItem(BaseModel):
+    title: str = Field(description="Crisp academic title of the intermediate bridge concept")
+    node_type: str = Field(default="concept", description="'concept', 'subtopic', or 'prerequisite'")
+    summary: str = Field(description="Explanatory summary of this stepping-stone concept")
+    relation_from_prev: str = Field(default="subtopic_of", description="Relation from preceding node to this bridge node: 'subtopic_of', 'prerequisite_for', 'affects', 'develops_into'")
+    label_from_prev: str = Field(default="", description="Human-readable label for edge from preceding node")
+    speaker_note: Optional[str] = Field(default="", description="Brief pedagogy note explaining how this softens the leap")
+
+class EdgeBridgeResult(BaseModel):
+    explanation_of_gap: str = Field(description="Diagnosis of why the direct jump was cognitively steep")
+    bridge_nodes: List[BridgeNodeItem] = Field(description="Sequential chain of 1 to 3 stepping-stone nodes")
+    relation_to_target: str = Field(default="prerequisite_for", description="Relation from the last bridge node to the target node")
+    label_to_target: str = Field(default="", description="Label from last bridge node to target node")
+
+class ManualInsertNodeOnEdgeRequest(BaseModel):
+    title: str
+    node_type: Optional[str] = "concept"
+    summary: Optional[str] = ""
+    relation_source_to_new: Optional[str] = "subtopic_of"
+    relation_new_to_target: Optional[str] = "prerequisite_for"
+    label_source_to_new: Optional[str] = ""
+    label_new_to_target: Optional[str] = ""
+
+# ==================== Smart Graph Weaving Schemas ====================
+class GraphWeaveRequest(BaseModel):
+    prompt: str = Field(description="The question, theorem, or topic to weave into the graph")
+    target_type: Optional[str] = Field(default="auto", description="'auto', 'question', 'concept', 'prerequisite', or 'subtopic'")
+    difficulty: Optional[str] = "intermediate"
+
+class WeaveNodeItem(BaseModel):
+    title: str = Field(description="Concept or inquiry title")
+    node_type: str = Field(description="'question', 'concept', 'prerequisite', 'subtopic', or 'note'")
+    summary: str = Field(description="Summary of the node")
+    is_primary_target: bool = Field(default=False, description="True if this is the primary node requested by the user, False if intermediate stepping stone")
+
+class WeaveEdgeItem(BaseModel):
+    source_title: str = Field(description="Title of source node (can be existing node title or one of the new node titles)")
+    target_title: str = Field(description="Title of target node (can be existing node title or one of the new node titles)")
+    relation_type: str = Field(default="related_to", description="'subtopic_of', 'prerequisite_for', 'question_for', 'affects', 'related_to'")
+    label: str = Field(default="", description="Descriptive edge label")
+
+class GraphWeaveResult(BaseModel):
+    anchor_node_ids: List[str] = Field(description="IDs of existing nodes to anchor to")
+    rationale: str = Field(description="Pedagogical rationale of where this was woven and whether stepping stones were needed")
+    nodes_to_create: List[WeaveNodeItem] = Field(description="List of nodes to create (primary node + any intermediate connecting nodes)")
+    edges_to_create: List[WeaveEdgeItem] = Field(description="Edges connecting anchor(s) and new nodes")
+
+class GraphWeaveResponse(BaseModel):
+    full_graph: Any
+    primary_node_id: str
+    created_node_ids: List[str]
+    rationale: str
+
+
+# ==================== Visualizations Schemas ====================
+class VisualizationSuggestionItem(BaseModel):
+    id: str = Field(description="Unique suggestion ID or slug")
+    title: str = Field(description="Crisp, minimalist title without emojis")
+    description: str = Field(description="1-sentence explanation of what this simulation or visualization demonstrates")
+    category: str = Field(default="simulation", description="Category: 'simulation', 'interactive_lab', 'phase_explorer', 'state_machine'")
+    prompt: str = Field(description="Tailored prompt ready to generate this interactive animated simulation")
+
+class VisualizationSuggestionResponse(BaseModel):
+    node_id: str
+    concept_title: str
+    suggestions: List[VisualizationSuggestionItem]
+
+class VisualizationSuggestionBatch(BaseModel):
+    concept_title: str
+    suggestions: List[VisualizationSuggestionItem]
+
+class VisualizationItem(BaseModel):
+    title: str = Field(description="Crisp, minimalist title for the visualization (no emojis)")
+    visualization_type: str = Field(default="simulation", description="Type: 'simulation', 'interactive_lab', 'phase_explorer', 'state_machine', 'flowchart', 'mindmap'")
+    code: str = Field(description="Self-contained HTML/CSS/JS simulation code or Mermaid syntax")
+    description: Optional[str] = Field(default="", description="1-2 sentence overview of what the visualization conveys")
+    explanation: Optional[str] = Field(default="", description="Pedagogical breakdown of components and moving parts")
+    format: Optional[str] = Field(default="html", description="Format type: 'html' (interactive simulation) or 'mermaid' (diagram)")
+
+class VisualizationBatchResult(BaseModel):
+    concept_title: str = Field(description="Concept or node title")
+    visualizations: List[VisualizationItem] = Field(description="List of distinct visual simulations for the concept")
+
+class VisualizationResponse(BaseModel):
+    id: str
+    node_id: str
+    topic_id: str
+    title: str
+    visualization_type: str
+    code: str
+    description: Optional[str] = ""
+    explanation: Optional[str] = ""
+    format: Optional[str] = "html"
+    metadata: Optional[Dict[str, Any]] = None
+    created_at: str
+    updated_at: str
+
+class VisualizationGenerateRequest(BaseModel):
+    visualization_type: Optional[str] = Field(default="simulation", description="'simulation', 'interactive_lab', 'flowchart', 'mindmap', 'state', 'auto'")
+    custom_prompt: Optional[str] = Field(default=None, description="Optional custom instructions or specific focus")
+    difficulty: Optional[str] = "intermediate"
+    force_refresh: Optional[bool] = False
+
+class VisualizationCreateRequest(BaseModel):
+    title: str
+    visualization_type: Optional[str] = "simulation"
+    code: str
+    description: Optional[str] = ""
+    explanation: Optional[str] = ""
+    format: Optional[str] = "html"
+    metadata: Optional[Dict[str, Any]] = None
+
+class VisualizationUpdateRequest(BaseModel):
+    title: Optional[str] = None
+    visualization_type: Optional[str] = None
+    code: Optional[str] = None
+    description: Optional[str] = None
+    explanation: Optional[str] = None
+    format: Optional[str] = None
+    metadata: Optional[Dict[str, Any]] = None
+
+
+

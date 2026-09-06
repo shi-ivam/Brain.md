@@ -100,10 +100,26 @@ export const QuestionTab: React.FC<QuestionTabProps> = ({
     }
   };
 
+  const suggestedPrompts = [
+    `What are the core paradoxes or edge cases in ${node.title}?`,
+    `How does ${node.title} connect to foundational first principles?`,
+    `Where does intuitive reasoning break down in ${node.title}?`,
+  ];
+
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', gap: '14px' }}>
-      {/* If this node has question content or summary, display formulation card */}
-      {(node.content || node.summary) && (
+    <div
+      style={{
+        display: 'flex',
+        flexDirection: 'column',
+        height: '100%',
+        minHeight: 0,
+        gap: '14px',
+        overflowY: 'auto',
+        paddingRight: '6px',
+      }}
+    >
+      {/* If this node is a question node, display question formulation card */}
+      {node.node_type === 'question' && (node.content || node.summary) && (
         <div
           style={{
             backgroundColor: 'var(--bg-card)',
@@ -113,31 +129,31 @@ export const QuestionTab: React.FC<QuestionTabProps> = ({
             display: 'flex',
             flexDirection: 'column',
             gap: '10px',
+            flexShrink: 0,
           }}
         >
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-            <span style={{ fontSize: '11px', fontFamily: 'var(--font-mono)', color: 'var(--tag-question-text)', letterSpacing: '0.04em' }}>
+            <span style={{ fontSize: '12px', fontFamily: 'var(--font-mono)', color: 'var(--tag-question-text)', letterSpacing: '0.04em' }}>
               QUESTION FORMULATION & CHALLENGE
             </span>
-            {node.node_type === 'question' && (
-              <button
-                onClick={handleDecompose}
-                disabled={isDecomposing}
-                className="obsidian-btn"
-                style={{
-                  fontSize: '11.5px',
-                  padding: '3px 8px',
-                  borderColor: 'var(--tag-question-border)',
-                  color: 'var(--tag-question-text)',
-                  backgroundColor: 'var(--tag-question-bg)',
-                }}
-              >
-                {isDecomposing ? 'Decomposing...' : 'Branch Influencing Topics'}
-              </button>
-            )}
+            <button
+              onClick={handleDecompose}
+              disabled={isDecomposing}
+              className="obsidian-btn"
+              style={{
+                fontSize: '12.5px',
+                padding: '4px 10px',
+                borderColor: 'var(--tag-question-border)',
+                color: 'var(--tag-question-text)',
+                backgroundColor: 'var(--tag-question-bg)',
+              }}
+            >
+              {isDecomposing ? 'Decomposing...' : 'Branch Influencing Topics'}
+            </button>
           </div>
           <div
             className="markdown-body"
+            style={{ maxHeight: '240px', overflowY: 'auto' }}
             dangerouslySetInnerHTML={{ __html: renderMarkdownWithMath(node.content || node.summary || '') }}
           />
         </div>
@@ -150,17 +166,18 @@ export const QuestionTab: React.FC<QuestionTabProps> = ({
           backgroundColor: 'var(--bg-card)',
           border: '1px solid var(--border-subtle)',
           borderRadius: '6px',
-          padding: '12px',
+          padding: '14px',
           display: 'flex',
           flexDirection: 'column',
           gap: '10px',
+          flexShrink: 0,
         }}
       >
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <span style={{ fontSize: '13px', fontWeight: 500, color: 'var(--text-primary)' }}>
+          <span style={{ fontSize: '14.5px', fontWeight: 500, color: 'var(--text-primary)' }}>
             Investigate & Inquire
           </span>
-          <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', color: 'var(--text-secondary)', cursor: 'pointer' }}>
+          <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', color: 'var(--text-secondary)', cursor: 'pointer' }}>
             <input
               type="checkbox"
               checked={pinToGraph}
@@ -185,7 +202,7 @@ export const QuestionTab: React.FC<QuestionTabProps> = ({
               borderRadius: '4px',
               padding: '8px 12px',
               color: 'var(--text-primary)',
-              fontSize: '13.5px',
+              fontSize: '14px',
               fontFamily: 'var(--font-sans)',
               outline: 'none',
             }}
@@ -194,17 +211,51 @@ export const QuestionTab: React.FC<QuestionTabProps> = ({
             type="submit"
             disabled={!questionText.trim() || isAsking}
             className="obsidian-btn obsidian-btn-primary"
-            style={{ fontSize: '12.5px', padding: '0 14px' }}
+            style={{ fontSize: '13.5px', padding: '0 16px', whiteSpace: 'nowrap' }}
           >
             {isAsking ? 'Thinking...' : 'Ask AI'}
           </button>
         </div>
+
+        {/* Suggested Quick Inquiry Prompts */}
+        <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginTop: '2px' }}>
+          {suggestedPrompts.map((prompt, idx) => (
+            <button
+              key={idx}
+              type="button"
+              onClick={() => handleAsk(undefined, prompt)}
+              disabled={isAsking}
+              className="obsidian-btn-subtle"
+              style={{
+                fontSize: '11.5px',
+                padding: '3px 9px',
+                borderRadius: '12px',
+                backgroundColor: 'rgba(255, 255, 255, 0.04)',
+                border: '1px solid var(--border-subtle)',
+                color: 'var(--text-muted)',
+                cursor: 'pointer',
+                textAlign: 'left',
+              }}
+              title={`Ask: "${prompt}"`}
+            >
+              ✦ {prompt}
+            </button>
+          ))}
+        </div>
       </form>
 
       {/* Inquiries History */}
-      <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '12px', paddingRight: '4px' }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', flexShrink: 0 }}>
+        {nodeInquiries.length > 0 && (
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0 2px' }}>
+            <span style={{ fontSize: '12px', fontFamily: 'var(--font-mono)', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+              Inquiry Records ({nodeInquiries.length})
+            </span>
+          </div>
+        )}
+
         {nodeInquiries.length === 0 ? (
-          <div style={{ textAlign: 'center', padding: '32px 16px', color: 'var(--text-muted)', fontSize: '13.5px' }}>
+          <div style={{ textAlign: 'center', padding: '28px 16px', color: 'var(--text-muted)', fontSize: '14px', border: '1px dashed var(--border-subtle)', borderRadius: '6px' }}>
             No inquiry records yet for this concept. Ask a question above or click any suggested prompt.
           </div>
         ) : (
@@ -217,7 +268,7 @@ export const QuestionTab: React.FC<QuestionTabProps> = ({
                   backgroundColor: 'var(--bg-card)',
                   border: '1px solid var(--border-subtle)',
                   borderRadius: '6px',
-                  padding: '12px',
+                  padding: '14px',
                   display: 'flex',
                   flexDirection: 'column',
                   gap: '8px',
@@ -230,31 +281,32 @@ export const QuestionTab: React.FC<QuestionTabProps> = ({
                     justifyContent: 'space-between',
                     alignItems: 'center',
                     cursor: 'pointer',
+                    gap: '8px',
                   }}
                 >
-                  <span style={{ fontSize: '13.5px', fontWeight: 500, color: '#bae6fd' }}>
+                  <span style={{ fontSize: '14.5px', fontWeight: 500, color: '#bae6fd', lineHeight: 1.4 }}>
                     Q: {inq.question}
                   </span>
-                  <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
+                  <span style={{ fontSize: '12px', color: 'var(--text-muted)', flexShrink: 0 }}>
                     {isExpanded ? '▲' : '▼'}
                   </span>
                 </div>
 
                 {isExpanded && (
-                  <div style={{ marginTop: '6px', borderTop: '1px solid var(--border-subtle)', paddingTop: '8px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                  <div style={{ marginTop: '8px', borderTop: '1px solid var(--border-subtle)', paddingTop: '10px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
                     <div
                       className="markdown-body"
                       dangerouslySetInnerHTML={{ __html: renderMarkdownWithMath(inq.answer) }}
                     />
-                    <div style={{ display: 'flex', justifyContent: 'flex-end', paddingTop: '4px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'flex-end', paddingTop: '6px' }}>
                       <button
                         type="button"
                         onClick={() => handleCreateLinkedQuestionNode(inq)}
                         disabled={creatingNodeInqId === inq.id || createdNodeInqIds.has(inq.id)}
                         className="obsidian-btn"
                         style={{
-                          fontSize: '11px',
-                          padding: '4px 10px',
+                          fontSize: '12.5px',
+                          padding: '5px 12px',
                           borderColor: createdNodeInqIds.has(inq.id) ? '#10b981' : 'var(--tag-question-border)',
                           color: createdNodeInqIds.has(inq.id) ? '#34d399' : 'var(--tag-question-text)',
                           backgroundColor: createdNodeInqIds.has(inq.id) ? 'rgba(16, 185, 129, 0.12)' : 'rgba(125, 211, 252, 0.08)',
