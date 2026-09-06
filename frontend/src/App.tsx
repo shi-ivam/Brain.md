@@ -1,7 +1,7 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Ribbon } from './components/Ribbon';
 import { SpotlightSearch } from './components/SpotlightSearch';
-import { KnowledgeGraphCanvas } from './components/Graph/KnowledgeGraphCanvas';
+import { KnowledgeGraphCanvas, KnowledgeGraphCanvasHandle } from './components/Graph/KnowledgeGraphCanvas';
 import { GraphControls } from './components/Graph/GraphControls';
 import { RightInspector } from './components/Inspector/RightInspector';
 import { VaultDrawer } from './components/VaultDrawer';
@@ -17,6 +17,7 @@ import {
   LayoutMode,
   NodeType,
   ShortestPathResult,
+  CommunityGroupInfo,
 } from './types';
 import {
   fetchTopics,
@@ -30,6 +31,9 @@ import {
   updateNodePosition,
   findShortestPath,
   fetchReviewQueue,
+  fetchTopicCommunities,
+  toggleNodeDone,
+  autoOrganizeTopic,
 } from './services/api';
 
 export const App: React.FC = () => {
@@ -50,6 +54,7 @@ export const App: React.FC = () => {
   const [isLoading, setIsLoading] = useState(false);
 
   // Graph state
+  const canvasRef = useRef<KnowledgeGraphCanvasHandle | null>(null);
   const [layoutMode, setLayoutMode] = useState<LayoutMode>('dag');
   const [difficulty, setDifficulty] = useState<DifficultyLevel>('intermediate');
   const [searchFilter, setSearchFilter] = useState('');
@@ -64,6 +69,9 @@ export const App: React.FC = () => {
   const [showMiniMap, setShowMiniMap] = useState<boolean>(true);
   const [isReviewDrawerOpen, setIsReviewDrawerOpen] = useState(false);
   const [dueReviewCount, setDueReviewCount] = useState<number>(0);
+  const [communities, setCommunities] = useState<CommunityGroupInfo[]>([]);
+  const [selectedCommunityId, setSelectedCommunityId] = useState<number | null>(null);
+  const [isAutoOrganizing, setIsAutoOrganizing] = useState<boolean>(false);
 
   const handleSelectNode = useCallback(
     (
@@ -232,6 +240,13 @@ export const App: React.FC = () => {
         );
         refreshReviewDueCount(topicId);
         setShortestPathResult(null);
+        fetchTopicCommunities(topicId)
+          .then((res) => setCommunities(res.communities))
+          .catch(() => setCommunities([]));
+        setSelectedCommunityId(null);
+        setTimeout(() => {
+          canvasRef.current?.fitGraph();
+        }, 120);
       } catch (err) {
         console.error('Failed to load topic graph:', err);
       } finally {
@@ -376,6 +391,47 @@ export const App: React.FC = () => {
     }
   }, [graphData, handleSelectNode]);
 
+  const handleToggleDone = useCallback(async (node: GraphNode) => {
+    try {
+      const updated = await toggleNodeDone(node.id);
+      setGraphData((prev) => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          nodes: prev.nodes.map((n) => (n.id === node.id ? { ...n, is_done: updated.is_done } : n)),
+        };
+      });
+      if (selectedNode && selectedNode.id === node.id) {
+        setSelectedNode((prev) => (prev ? { ...prev, is_done: updated.is_done } : null));
+      }
+    } catch (err) {
+      console.error('Failed to toggle node done status:', err);
+    }
+  }, [selectedNode]);
+
+  const handleAutoOrganize = useCallback(async () => {
+    if (!activeTopicId || isAutoOrganizing) return;
+    setIsAutoOrganizing(true);
+    try {
+      const res = await autoOrganizeTopic(activeTopicId);
+      if (res.full_graph) {
+        setLayoutMode('dag');
+        setGraphData(res.full_graph);
+        if (selectedNode) {
+          const fresh = res.full_graph.nodes.find((n) => n.id === selectedNode.id);
+          if (fresh) setSelectedNode(fresh);
+        }
+        setTimeout(() => {
+          canvasRef.current?.fitGraph();
+        }, 120);
+      }
+    } catch (err) {
+      console.error('Failed to auto-organize topic graph:', err);
+    } finally {
+      setIsAutoOrganizing(false);
+    }
+  }, [activeTopicId, isAutoOrganizing, selectedNode]);
+
   // Keyboard shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -465,6 +521,7 @@ export const App: React.FC = () => {
       try {
         const res = await expandNode(node.id, 'subtopics', difficulty);
         setGraphData(res.full_graph);
+        fetchTopicCommunities(node.topic_id).then((c) => setCommunities(c.communities)).catch(() => {});
       } catch (err) {
         console.error('Failed to expand subtopics:', err);
       } finally {
@@ -475,6 +532,7 @@ export const App: React.FC = () => {
       try {
         const res = await expandNode(node.id, 'topics_affecting_question', difficulty);
         setGraphData(res.full_graph);
+        fetchTopicCommunities(node.topic_id).then((c) => setCommunities(c.communities)).catch(() => {});
       } catch (err) {
         console.error('Failed to decompose question:', err);
       } finally {
@@ -485,6 +543,7 @@ export const App: React.FC = () => {
       try {
         const res = await expandNode(node.id, 'subquestions', difficulty);
         setGraphData(res.full_graph);
+        fetchTopicCommunities(node.topic_id).then((c) => setCommunities(c.communities)).catch(() => {});
       } catch (err) {
         console.error('Failed to branch subquestions:', err);
       } finally {
@@ -495,6 +554,7 @@ export const App: React.FC = () => {
       try {
         const res = await expandNode(node.id, 'tested_concepts', difficulty);
         setGraphData(res.full_graph);
+        fetchTopicCommunities(node.topic_id).then((c) => setCommunities(c.communities)).catch(() => {});
       } catch (err) {
         console.error('Failed to branch tested concepts:', err);
       } finally {
@@ -580,9 +640,9 @@ export const App: React.FC = () => {
             <GraphControls
               layoutMode={layoutMode}
               onToggleLayout={setLayoutMode}
-              onZoomIn={() => {}}
-              onZoomOut={() => {}}
-              onResetView={() => {}}
+              onZoomIn={() => canvasRef.current?.zoomIn()}
+              onZoomOut={() => canvasRef.current?.zoomOut()}
+              onResetView={() => canvasRef.current?.fitGraph()}
               searchFilter={searchFilter}
               onSearchFilterChange={setSearchFilter}
               activeFilters={activeFilters}
@@ -597,10 +657,16 @@ export const App: React.FC = () => {
               shortestPathActive={!!shortestPathResult && shortestPathResult.found}
               showMiniMap={showMiniMap}
               onToggleMiniMap={() => setShowMiniMap((prev) => !prev)}
+              communities={communities}
+              selectedCommunityId={selectedCommunityId}
+              onSelectCommunity={setSelectedCommunityId}
+              onAutoOrganize={handleAutoOrganize}
+              isAutoOrganizing={isAutoOrganizing}
             />
 
             {/* Interactive 2D Canvas Engine */}
             <KnowledgeGraphCanvas
+              ref={canvasRef}
               nodes={graphData.nodes}
               edges={graphData.edges}
               layoutMode={layoutMode}
@@ -608,6 +674,7 @@ export const App: React.FC = () => {
               onSelectNode={(n) => {
                 handleSelectNode(n);
               }}
+              onToggleDone={handleToggleDone}
               onOpenAction={handleOpenAction}
               difficulty={difficulty}
               searchFilter={searchFilter}
@@ -631,6 +698,11 @@ export const App: React.FC = () => {
               colorMode={colorMode}
               showMiniMap={showMiniMap}
               onSelectEdge={handleSelectEdge}
+              selectedCommunityNodeIds={
+                selectedCommunityId !== null && selectedCommunityId !== undefined
+                  ? new Set(communities.find((c) => c.community_id === selectedCommunityId)?.node_ids || [])
+                  : null
+              }
             />
           </>
         ) : (
@@ -672,6 +744,7 @@ export const App: React.FC = () => {
           difficulty={difficulty}
           initialTab={inspectorTab}
           targetSection={targetSection}
+          onToggleDone={handleToggleDone}
           onClose={() => {
             setSelectedNode(null);
             setHistoryIndex(-1);

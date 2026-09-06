@@ -8,6 +8,7 @@ interface NodeContextMenuProps {
   onSynthesizeNote?: (node: GraphNode) => void;
   onDecomposeQuestion?: (nodeId: string) => void;
   onOpenQuiz?: (node: GraphNode) => void;
+  onToggleDone?: (node: GraphNode) => void;
   onDeleteNode: (nodeId: string) => void;
   onClose: () => void;
 }
@@ -19,6 +20,7 @@ export const NodeContextMenu: React.FC<NodeContextMenuProps> = ({
   onSynthesizeNote,
   onDecomposeQuestion,
   onOpenQuiz,
+  onToggleDone,
   onDeleteNode,
   onClose,
 }) => {
@@ -125,6 +127,31 @@ export const NodeContextMenu: React.FC<NodeContextMenuProps> = ({
         </svg>
         Inspect Study Note
       </button>
+
+      {/* Action: Toggle Done */}
+      {onToggleDone && (
+        <button
+          onClick={() => {
+            onToggleDone(node);
+            onClose();
+          }}
+          className="obsidian-btn-subtle"
+          style={{
+            justifyContent: 'flex-start',
+            fontSize: '12px',
+            padding: '6px 8px',
+            borderRadius: '4px',
+            gap: '8px',
+            width: '100%',
+            color: node.is_done ? '#10b981' : 'var(--text-secondary)',
+          }}
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <polyline points="20 6 9 17 4 12" />
+          </svg>
+          {node.is_done ? 'Mark as In Progress' : 'Mark as Completed'}
+        </button>
+      )}
 
       {/* Action: Question Decomposition (if question) */}
       {node.node_type === 'question' && onDecomposeQuestion && (

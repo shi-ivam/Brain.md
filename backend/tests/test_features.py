@@ -61,7 +61,7 @@ class FeatureTests(unittest.TestCase):
         cursor = conn.cursor()
         cursor.execute("PRAGMA table_info(nodes)")
         node_cols = {r["name"] for r in cursor.fetchall()}
-        for col in ["mastery_score", "review_interval", "ease_factor", "review_due", "review_count", "portal_topic_id"]:
+        for col in ["mastery_score", "review_interval", "ease_factor", "review_due", "review_count", "portal_topic_id", "is_done"]:
             self.assertIn(col, node_cols)
 
         cursor.execute("PRAGMA table_info(edges)")
@@ -320,6 +320,124 @@ class FeatureTests(unittest.TestCase):
         edge = next(e for e in graph["edges"] if e["id"] == edge_id)
         self.assertEqual(edge["edge_type"], "prerequisite_for")
         self.assertEqual(edge["label"], "Essential Foundation")
+
+    def test_toggle_node_done(self):
+        n1 = self._create_node("Study Calculus")
+        
+        # Verify initially is_done is False
+        graph = self.client.get(f"/api/topics/{self.topic_id}").json()
+        node = next(n for n in graph["nodes"] if n["id"] == n1)
+        self.assertFalse(node["is_done"])
+
+        # Toggle via empty body -> should be True
+        res = self.client.post(f"/api/nodes/{n1}/done")
+        self.assertEqual(res.status_code, 200)
+        self.assertTrue(res.json()["is_done"])
+
+        # Graph should also reflect True
+        graph = self.client.get(f"/api/topics/{self.topic_id}").json()
+        node = next(n for n in graph["nodes"] if n["id"] == n1)
+        self.assertTrue(node["is_done"])
+
+        # Toggle again via empty body -> should be False
+        res2 = self.client.post(f"/api/nodes/{n1}/done")
+        self.assertEqual(res2.status_code, 200)
+        self.assertFalse(res2.json()["is_done"])
+
+        # Set explicitly to True
+        res3 = self.client.post(f"/api/nodes/{n1}/done", json={"is_done": True})
+        self.assertEqual(res3.status_code, 200)
+        self.assertTrue(res3.json()["is_done"])
+
+        # Set explicitly to False
+        res4 = self.client.post(f"/api/nodes/{n1}/done", json={"is_done": False})
+        self.assertEqual(res4.status_code, 200)
+        self.assertFalse(res4.json()["is_done"])
+
+        # 404 on missing node
+        res_404 = self.client.post("/api/nodes/non-existent-node/done")
+        self.assertEqual(res_404.status_code, 404)
+
+    def test_auto_organize(self):
+        root = self._create_node("Quantum Mechanics Root", node_type="concept", pos_x=0.0, pos_y=0.0)
+        prereq = self._create_node("Linear Algebra", node_type="prerequisite", pos_x=500.0, pos_y=500.0)
+        sub1 = self._create_node("Wave Functions", node_type="subtopic", pos_x=10.0, pos_y=20.0)
+        sub2 = self._create_node("Schrodinger Equation", node_type="subtopic", pos_x=10.0, pos_y=20.0)
+
+        # Connect
+        self._create_edge(prereq, root, relation_type="prerequisite_for")
+        self._create_edge(root, sub1, relation_type="subtopic_of")
+        self._create_edge(root, sub2, relation_type="subtopic_of")
+
+        res = self.client.post(f"/api/topics/{self.topic_id}/auto-organize")
+        self.assertEqual(res.status_code, 200)
+        data = res.json()
+        self.assertTrue(data["success"])
+        self.assertEqual(data["nodes_updated"], 4)
+
+        nodes = data["full_graph"]["nodes"]
+        nodes_dict = {n["id"]: n for n in nodes}
+
+        # Check prerequisite is to the left of root
+        self.assertLess(nodes_dict[prereq]["pos_x"], nodes_dict[root]["pos_x"])
+        # Check subtopics are to the right of root
+        self.assertGreater(nodes_dict[sub1]["pos_x"], nodes_dict[root]["pos_x"])
+        self.assertGreater(nodes_dict[sub2]["pos_x"], nodes_dict[root]["pos_x"])
+
+        # Check sub1 and sub2 do NOT collide on pos_y
+        self.assertNotEqual(nodes_dict[sub1]["pos_y"], nodes_dict[sub2]["pos_y"])
+
+        # 404 on unknown topic
+        res_404 = self.client.post("/api/topics/unknown-topic-id/auto-organize")
+        self.assertEqual(res_404.status_code, 404)
+
+    def test_create_node_from_selected_text_flow(self):
+        # 1. Create parent note node
+        original_note = "The gradient vector points in the direction of steepest ascent."
+        parent_id = self._create_node("Multivariable Calculus", content=original_note)
+
+        # 2. Simulate user selecting "gradient vector" and creating a concept node
+        selected_text = "gradient vector"
+        new_title = "Gradient Vector"
+        res_node = self.client.post("/api/nodes", json={
+            "topic_id": self.topic_id,
+            "title": new_title,
+            "node_type": "concept",
+            "summary": selected_text,
+            "content": f"# {new_title}\n\nExtracted from [[Multivariable Calculus]]:\n> {selected_text}\n",
+            "parent_node_id": parent_id,
+            "pos_x": 660.0,
+            "pos_y": 300.0,
+        })
+        self.assertEqual(res_node.status_code, 200)
+        new_node_id = res_node.json()["id"]
+
+        # 3. Create connecting edge
+        res_edge = self.client.post("/api/edges", json={
+            "topic_id": self.topic_id,
+            "source_id": parent_id,
+            "target_id": new_node_id,
+            "relation_type": "subtopic_of",
+            "edge_type": "subtopic_of",
+            "label": "subtopic",
+        })
+        self.assertEqual(res_edge.status_code, 200)
+
+        # 4. Replace selected text in parent note with [[Gradient Vector]] and save
+        updated_note = original_note.replace(selected_text, f"[[{new_title}]]")
+        res_save = self.client.post(f"/api/nodes/{parent_id}/notes", json={
+            "content": updated_note
+        })
+        self.assertEqual(res_save.status_code, 200)
+
+        # 5. Verify graph state
+        graph = self.client.get(f"/api/topics/{self.topic_id}").json()
+        parent_node = next(n for n in graph["nodes"] if n["id"] == parent_id)
+        child_node = next(n for n in graph["nodes"] if n["id"] == new_node_id)
+        self.assertIn("[[Gradient Vector]]", parent_node["content"])
+        self.assertEqual(child_node["title"], "Gradient Vector")
+        self.assertEqual(child_node["parent_node_id"], parent_id)
+        self.assertTrue(any(e["source_id"] == parent_id and e["target_id"] == new_node_id for e in graph["edges"]))
 
 if __name__ == '__main__':
     unittest.main()

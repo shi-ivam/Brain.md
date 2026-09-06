@@ -36,6 +36,7 @@ export interface GraphNode {
   review_due?: string;
   review_count?: number;
   portal_topic_id?: string;
+  is_done?: boolean;
   tags?: string[];
   // Simulation runtime properties
   x?: number;
@@ -132,5 +133,18 @@ export interface DeepLinkState {
   tab?: 'notes' | 'questions' | 'quiz' | 'connections';
   section?: string;
   highlight?: string;
+}
+
+export interface CommunityGroupInfo {
+  community_id: number;
+  label: string;
+  representative_node_id: string;
+  node_count: number;
+  node_ids: string[];
+}
+
+export interface CommunityGroupResponse {
+  topic_id: string;
+  communities: CommunityGroupInfo[];
 }
 

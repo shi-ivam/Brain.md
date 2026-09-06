@@ -37,6 +37,7 @@ class NodeResponse(BaseModel):
     review_due: Optional[str] = None
     review_count: Optional[int] = 0
     portal_topic_id: Optional[str] = None
+    is_done: Optional[bool] = False
     metadata: Optional[Dict[str, Any]] = None
 
 class EdgeResponse(BaseModel):
@@ -60,6 +61,7 @@ class NodeCreate(BaseModel):
     pos_x: Optional[float] = None
     pos_y: Optional[float] = None
     portal_topic_id: Optional[str] = None
+    is_done: Optional[bool] = False
 
 class NodeUpdate(BaseModel):
     title: Optional[str] = None
@@ -69,6 +71,15 @@ class NodeUpdate(BaseModel):
     pos_y: Optional[float] = None
     portal_topic_id: Optional[str] = None
     difficulty: Optional[str] = None
+    is_done: Optional[bool] = None
+
+class NodeDoneRequest(BaseModel):
+    is_done: Optional[bool] = None
+
+class AutoOrganizeResponse(BaseModel):
+    topic_id: str
+    nodes_updated: int
+    graph: Dict[str, Any]
 
 class EdgeCreate(BaseModel):
     topic_id: str
@@ -222,3 +233,40 @@ class InquiryAnswerResult(BaseModel):
     key_takeaways: List[str]
     follow_up_inquiries: List[str]
     mathematical_formulation: Optional[str] = None
+
+# Smart Context-Aware Graph Schemas
+class ExistingNodeLink(BaseModel):
+    existing_node_id: str = Field(description="The ID or 8-character ID prefix of the pre-existing node to connect to")
+    relation_type: str = Field(default="related_to", description="Relation type: 'subtopic_of', 'prerequisite_for', 'affects', 'governs', 'related_to'")
+    label: str = Field(default="", description="Brief edge label describing the connection")
+    direction: str = Field(default="parent_to_existing", description="'parent_to_existing' (current node -> existing node) or 'existing_to_parent' (existing node -> current node)")
+
+class NewNodeExistingLink(BaseModel):
+    new_node_title: str = Field(description="Title of the new node being linked")
+    existing_node_id: str = Field(description="ID or 8-character ID prefix of pre-existing node to link with")
+    relation_type: str = Field(default="related_to", description="Relation type e.g. 'related_to', 'subtopic_of', 'prerequisite_for'")
+    label: str = Field(default="", description="Brief edge label")
+
+class SmartSubtopicExpansionResult(BaseModel):
+    parent_concept: str
+    connect_to_existing: List[ExistingNodeLink] = Field(default_factory=list, description="Connections to pre-existing nodes that already cover relevant subtopics/prerequisites")
+    new_nodes: List[SubtopicNodeItem] = Field(default_factory=list, description="Genuinely new subtopic nodes to create")
+    new_node_existing_links: List[NewNodeExistingLink] = Field(default_factory=list, description="Cross-links from newly created subtopics to other pre-existing nodes")
+
+class SmartQuestionDecompositionResult(BaseModel):
+    question: str
+    core_paradox_or_challenge: str
+    connect_to_existing: List[ExistingNodeLink] = Field(default_factory=list, description="Pre-existing foundational topics in the graph that already govern or affect this question")
+    new_nodes: List[DecomposedTopicItem] = Field(default_factory=list, description="Genuinely new foundational topics to create")
+    new_node_existing_links: List[NewNodeExistingLink] = Field(default_factory=list, description="Cross-links from new topics to other pre-existing nodes")
+
+class CommunityGroupInfo(BaseModel):
+    community_id: int
+    label: str
+    representative_node_id: str
+    node_count: int
+    node_ids: List[str]
+
+class CommunityGroupResponse(BaseModel):
+    topic_id: str
+    communities: List[CommunityGroupInfo]

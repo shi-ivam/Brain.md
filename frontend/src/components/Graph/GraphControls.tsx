@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { LayoutMode, NodeType, GraphNode } from '../../types';
+import { LayoutMode, NodeType, GraphNode, CommunityGroupInfo } from '../../types';
 
 interface GraphControlsProps {
   layoutMode: LayoutMode;
@@ -22,6 +22,11 @@ interface GraphControlsProps {
   shortestPathActive?: boolean;
   showMiniMap?: boolean;
   onToggleMiniMap?: () => void;
+  communities?: CommunityGroupInfo[];
+  selectedCommunityId?: number | null;
+  onSelectCommunity?: (communityId: number | null) => void;
+  onAutoOrganize?: () => void;
+  isAutoOrganizing?: boolean;
 }
 
 const ALL_TYPES: { type: NodeType; label: string; color: string }[] = [
@@ -53,6 +58,11 @@ export const GraphControls: React.FC<GraphControlsProps> = ({
   shortestPathActive = false,
   showMiniMap = true,
   onToggleMiniMap,
+  communities = [],
+  selectedCommunityId = null,
+  onSelectCommunity,
+  onAutoOrganize,
+  isAutoOrganizing = false,
 }) => {
   const [isPathFinderOpen, setIsPathFinderOpen] = useState(false);
   const [sourceNodeId, setSourceNodeId] = useState('');
@@ -170,6 +180,36 @@ export const GraphControls: React.FC<GraphControlsProps> = ({
               </svg>
             </button>
           )}
+
+          {/* Auto Organize button */}
+          {onAutoOrganize && (
+            <button
+              onClick={onAutoOrganize}
+              disabled={isAutoOrganizing}
+              className="obsidian-btn-subtle"
+              title="Auto Organize (Tidy up graph layout into a clean, collision-free hierarchy)"
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '4px',
+                padding: '3px 8px',
+                fontSize: '11px',
+                fontFamily: 'var(--font-sans)',
+                color: 'var(--text-primary)',
+                backgroundColor: 'rgba(191, 164, 248, 0.12)',
+                border: '1px solid rgba(191, 164, 248, 0.3)',
+                borderRadius: '4px',
+                cursor: isAutoOrganizing ? 'not-allowed' : 'pointer',
+                opacity: isAutoOrganizing ? 0.6 : 1,
+                fontWeight: 500,
+              }}
+            >
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" />
+              </svg>
+              {isAutoOrganizing ? 'Organizing...' : 'Auto Organize'}
+            </button>
+          )}
         </div>
       </div>
 
@@ -198,6 +238,37 @@ export const GraphControls: React.FC<GraphControlsProps> = ({
               <option value="all">Full Graph</option>
               <option value="1-hop">1-Hop Neighbors</option>
               <option value="2-hop">2-Hop Neighborhood</option>
+            </select>
+          </div>
+        )}
+
+        {/* Thematic Modules / Communities dropdown */}
+        {communities && communities.length > 0 && onSelectCommunity && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+            <span style={{ fontSize: '10px', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>Module:</span>
+            <select
+              value={selectedCommunityId !== null && selectedCommunityId !== undefined ? String(selectedCommunityId) : 'all'}
+              onChange={(e) => onSelectCommunity(e.target.value === 'all' ? null : Number(e.target.value))}
+              style={{
+                fontSize: '11px',
+                fontFamily: 'var(--font-sans)',
+                backgroundColor: 'var(--bg-card)',
+                color: 'var(--text-primary)',
+                border: '1px solid var(--border-subtle)',
+                borderRadius: '4px',
+                padding: '2px 4px',
+                outline: 'none',
+                cursor: 'pointer',
+                maxWidth: '125px',
+              }}
+              title="Filter by topological learning module / community"
+            >
+              <option value="all">All Modules ({nodes.length})</option>
+              {communities.map((c) => (
+                <option key={c.community_id} value={c.community_id}>
+                  {c.label} ({c.node_count})
+                </option>
+              ))}
             </select>
           </div>
         )}

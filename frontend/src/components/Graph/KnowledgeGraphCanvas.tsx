@@ -1,4 +1,4 @@
-import React, { useRef, useEffect, useState, useCallback } from 'react';
+import React, { useRef, useEffect, useState, useCallback, useImperativeHandle, forwardRef } from 'react';
 import {
   GraphNode,
   GraphEdge,
@@ -9,6 +9,12 @@ import {
 } from '../../types';
 import { NodePlusPopover } from './NodePlusPopover';
 import { NodeContextMenu } from './NodeContextMenu';
+
+export interface KnowledgeGraphCanvasHandle {
+  fitGraph: () => void;
+  zoomIn: () => void;
+  zoomOut: () => void;
+}
 
 interface KnowledgeGraphCanvasProps {
   nodes: GraphNode[];
@@ -35,12 +41,14 @@ interface KnowledgeGraphCanvasProps {
   onSynthesizeNote?: (node: GraphNode) => void;
   onDecomposeQuestion?: (nodeId: string) => void;
   onOpenQuiz?: (node: GraphNode) => void;
+  onToggleDone?: (node: GraphNode) => void;
   // Features 4, 14, 16, 20, 21, 22, 23
   lensMode?: 'all' | '1-hop' | '2-hop';
   shortestPath?: ShortestPathResult | null;
   colorMode?: 'default' | 'heatmap';
   showMiniMap?: boolean;
   onSelectEdge?: (edge: GraphEdge) => void;
+  selectedCommunityNodeIds?: Set<string> | null;
 }
 
 const COLOR_MAP: Record<NodeType, { fill: string; glow: string; text: string }> = {
@@ -59,28 +67,34 @@ const getHeatmapColor = (score: number) => {
   return { fill: '#059669', glow: 'rgba(5, 150, 105, 0.6)', text: '#a7f3d0' };
 };
 
-export const KnowledgeGraphCanvas: React.FC<KnowledgeGraphCanvasProps> = ({
-  nodes,
-  edges,
-  layoutMode,
-  selectedNodeId,
-  onSelectNode,
-  onOpenAction,
-  difficulty,
-  searchFilter,
-  activeFilters,
-  onDeleteNode,
-  onNodePositionChange,
-  onSynthesizeNote,
-  onDecomposeQuestion,
-  onOpenQuiz,
-  lensMode = 'all',
-  shortestPath = null,
-  colorMode = 'default',
-  showMiniMap = true,
-  onSelectEdge,
-}) => {
-  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+export const KnowledgeGraphCanvas = forwardRef<KnowledgeGraphCanvasHandle, KnowledgeGraphCanvasProps>(
+  (
+    {
+      nodes,
+      edges,
+      layoutMode,
+      selectedNodeId,
+      onSelectNode,
+      onOpenAction,
+      difficulty,
+      searchFilter,
+      activeFilters,
+      onDeleteNode,
+      onNodePositionChange,
+      onSynthesizeNote,
+      onDecomposeQuestion,
+      onOpenQuiz,
+      onToggleDone,
+      lensMode = 'all',
+      shortestPath = null,
+      colorMode = 'default',
+      showMiniMap = true,
+      onSelectEdge,
+      selectedCommunityNodeIds = null,
+    },
+    ref
+  ) => {
+    const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const miniMapRef = useRef<HTMLCanvasElement | null>(null);
 
   // Transform: Pan & Zoom
@@ -184,28 +198,34 @@ export const KnowledgeGraphCanvas: React.FC<KnowledgeGraphCanvasProps> = ({
       const targetY = 360 - ((totalInGroup - 1) * verticalSpacing) / 2 + indexInGroup * verticalSpacing;
 
       const isManual = node.pos_x !== undefined && node.pos_y !== undefined;
-      const defaultX = isManual ? node.pos_x! : targetX;
-      const defaultY = isManual ? node.pos_y! : targetY;
+      const targetPosX = isManual ? node.pos_x! : (layoutMode === 'dag' ? targetX : (existing?.pos_x ?? targetX));
+      const targetPosY = isManual ? node.pos_y! : (layoutMode === 'dag' ? targetY : (existing?.pos_y ?? targetY));
 
-      if (!layoutChanged && existing && existing.x !== undefined && existing.y !== undefined) {
+      if (existing && existing.x !== undefined && existing.y !== undefined) {
+        const posChanged =
+          isManual &&
+          (existing.pos_x === undefined ||
+            Math.abs(node.pos_x! - existing.pos_x) > 1 ||
+            Math.abs(node.pos_y! - (existing.pos_y ?? 0)) > 1);
+
         return {
           ...node,
           x: existing.x,
           y: existing.y,
-          vx: existing.vx || 0,
-          vy: existing.vy || 0,
-          pos_x: existing.pos_x ?? defaultX,
-          pos_y: existing.pos_y ?? defaultY,
+          vx: posChanged || layoutChanged ? 0 : (existing.vx || 0),
+          vy: posChanged || layoutChanged ? 0 : (existing.vy || 0),
+          pos_x: targetPosX,
+          pos_y: targetPosY,
           radius,
         };
       }
 
       return {
         ...node,
-        x: defaultX,
-        y: defaultY,
-        pos_x: defaultX,
-        pos_y: defaultY,
+        x: targetPosX,
+        y: targetPosY,
+        pos_x: targetPosX,
+        pos_y: targetPosY,
         vx: 0,
         vy: 0,
         radius,
@@ -223,22 +243,22 @@ export const KnowledgeGraphCanvas: React.FC<KnowledgeGraphCanvasProps> = ({
 
     let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
     simNodes.forEach((n) => {
-      const x = n.x || 0;
-      const y = n.y || 0;
+      const x = n.pos_x !== undefined ? n.pos_x : (n.x || 0);
+      const y = n.pos_y !== undefined ? n.pos_y : (n.y || 0);
       if (x < minX) minX = x;
       if (x > maxX) maxX = x;
       if (y < minY) minY = y;
       if (y > maxY) maxY = y;
     });
 
-    const padding = 100;
+    const padding = 120;
     const graphWidth = Math.max(100, maxX - minX + padding * 2);
     const graphHeight = Math.max(100, maxY - minY + padding * 2);
 
     const rect = canvas.getBoundingClientRect();
     const scaleX = rect.width / graphWidth;
     const scaleY = rect.height / graphHeight;
-    const k = Math.max(0.4, Math.min(1.4, Math.min(scaleX, scaleY)));
+    const k = Math.max(0.35, Math.min(1.2, Math.min(scaleX, scaleY)));
 
     const centerX = (minX + maxX) / 2;
     const centerY = (minY + maxY) / 2;
@@ -246,9 +266,50 @@ export const KnowledgeGraphCanvas: React.FC<KnowledgeGraphCanvasProps> = ({
     const newX = rect.width / 2 - centerX * k;
     const newY = rect.height / 2 - centerY * k;
 
+    cameraTargetRef.current = null;
     transformRef.current = { x: newX, y: newY, k };
     setTransform({ x: newX, y: newY, k });
   }, []);
+
+  const zoomIn = useCallback(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const rect = canvas.getBoundingClientRect();
+    const centerX = rect.width / 2;
+    const centerY = rect.height / 2;
+    const current = transformRef.current;
+    const newK = Math.max(0.2, Math.min(3.0, current.k * 1.25));
+    const newX = centerX - (centerX - current.x) * (newK / current.k);
+    const newY = centerY - (centerY - current.y) * (newK / current.k);
+    cameraTargetRef.current = null;
+    transformRef.current = { x: newX, y: newY, k: newK };
+    setTransform({ x: newX, y: newY, k: newK });
+  }, []);
+
+  const zoomOut = useCallback(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const rect = canvas.getBoundingClientRect();
+    const centerX = rect.width / 2;
+    const centerY = rect.height / 2;
+    const current = transformRef.current;
+    const newK = Math.max(0.2, Math.min(3.0, current.k * 0.8));
+    const newX = centerX - (centerX - current.x) * (newK / current.k);
+    const newY = centerY - (centerY - current.y) * (newK / current.k);
+    cameraTargetRef.current = null;
+    transformRef.current = { x: newX, y: newY, k: newK };
+    setTransform({ x: newX, y: newY, k: newK });
+  }, []);
+
+  useImperativeHandle(
+    ref,
+    () => ({
+      fitGraph,
+      zoomIn,
+      zoomOut,
+    }),
+    [fitGraph, zoomIn, zoomOut]
+  );
 
   // Center graph initially when first loaded
   useEffect(() => {
@@ -273,92 +334,107 @@ export const KnowledgeGraphCanvas: React.FC<KnowledgeGraphCanvasProps> = ({
       simNodes.forEach((n) => nodeMap.set(n.id, n));
 
       // --- Physics Step ---
-      const numNodes = simNodes.length;
-      const repulsion = layoutMode === 'dag' ? 350 : 600;
-      const springLength = layoutMode === 'dag' ? 120 : 90;
-      const springK = 0.035;
-      const damping = 0.85;
-
-      // 1. Node Repulsion
-      for (let i = 0; i < numNodes; i++) {
-        const n1 = simNodes[i];
-        for (let j = i + 1; j < numNodes; j++) {
-          const n2 = simNodes[j];
-          const dx = (n2.x || 0) - (n1.x || 0);
-          const dy = (n2.y || 0) - (n1.y || 0);
-          const distSq = dx * dx + dy * dy + 10;
-          const dist = Math.sqrt(distSq);
-          if (dist < 320) {
-            const force = repulsion / distSq;
-            const fx = (dx / dist) * force;
-            const fy = (dy / dist) * force;
-            n1.vx = (n1.vx || 0) - fx;
-            n1.vy = (n1.vy || 0) - fy;
-            n2.vx = (n2.vx || 0) + fx;
-            n2.vy = (n2.vy || 0) + fy;
+      if (layoutMode === 'dag') {
+        // Academic Flow layout: smoothly ease nodes directly into their calculated/organized positions
+        simNodes.forEach((node) => {
+          if (draggingNodeRef.current?.id === node.id) {
+            node.vx = 0;
+            node.vy = 0;
+            return;
           }
-        }
-      }
 
-      // 2. Edge Springs
-      edges.forEach((edge) => {
-        const src = nodeMap.get(edge.source_id);
-        const tgt = nodeMap.get(edge.target_id);
-        if (src && tgt) {
-          const dx = (tgt.x || 0) - (src.x || 0);
-          const dy = (tgt.y || 0) - (src.y || 0);
-          const dist = Math.sqrt(dx * dx + dy * dy) || 1;
-          const displacement = dist - springLength;
-          const force = displacement * springK;
-          const fx = (dx / dist) * force;
-          const fy = (dy / dist) * force;
+          const targetX = node.pos_x !== undefined ? node.pos_x : (node.x || 0);
+          const targetY = node.pos_y !== undefined ? node.pos_y : (node.y || 0);
 
-          src.vx = (src.vx || 0) + fx;
-          src.vy = (src.vy || 0) + fy;
-          tgt.vx = (tgt.vx || 0) - fx;
-          tgt.vy = (tgt.vy || 0) - fy;
+          const dx = targetX - (node.x || 0);
+          const dy = targetY - (node.y || 0);
 
-          // Rightward tendency: Target node should naturally sit to the right of Source node with spread
-          const minRightSeparation = 180;
-          if (tgt.x !== undefined && src.x !== undefined && tgt.x < src.x + minRightSeparation) {
-            const pushX = (src.x + minRightSeparation - tgt.x) * 0.04;
-            tgt.vx = (tgt.vx || 0) + pushX;
-            src.vx = (src.vx || 0) - pushX * 0.4;
+          if (Math.abs(dx) > 0.5 || Math.abs(dy) > 0.5) {
+            node.x = (node.x || 0) + dx * 0.18;
+            node.y = (node.y || 0) + dy * 0.18;
+          } else {
+            node.x = targetX;
+            node.y = targetY;
           }
-        }
-      });
-
-      // 3. Update velocity & position
-      simNodes.forEach((node) => {
-        if (draggingNodeRef.current?.id === node.id) {
           node.vx = 0;
           node.vy = 0;
-          return;
+        });
+      } else {
+        // Force Dynamic: Obsidian spring & repulsion physics simulation
+        const numNodes = simNodes.length;
+        const repulsion = 600;
+        const springLength = 90;
+        const springK = 0.035;
+        const damping = 0.85;
+
+        // 1. Node Repulsion
+        for (let i = 0; i < numNodes; i++) {
+          const n1 = simNodes[i];
+          for (let j = i + 1; j < numNodes; j++) {
+            const n2 = simNodes[j];
+            const dx = (n2.x || 0) - (n1.x || 0);
+            const dy = (n2.y || 0) - (n1.y || 0);
+            const distSq = dx * dx + dy * dy + 10;
+            const dist = Math.sqrt(distSq);
+            if (dist < 320) {
+              const force = repulsion / distSq;
+              const fx = (dx / dist) * force;
+              const fy = (dy / dist) * force;
+              n1.vx = (n1.vx || 0) - fx;
+              n1.vy = (n1.vy || 0) - fy;
+              n2.vx = (n2.vx || 0) + fx;
+              n2.vy = (n2.vy || 0) + fy;
+            }
+          }
         }
 
-        // Rightward layout guidance: Nudge towards target rightward tier and vertical spread
-        if (node.pos_x !== undefined) {
-          const targetX = node.pos_x;
-          node.vx = (node.vx || 0) + (targetX - (node.x || 0)) * (layoutMode === 'dag' ? 0.06 : 0.015);
-        }
-        if (layoutMode === 'dag' && node.pos_y !== undefined) {
-          const targetY = node.pos_y;
-          node.vy = (node.vy || 0) + (targetY - (node.y || 0)) * 0.05;
-        }
+        // 2. Edge Springs
+        edges.forEach((edge) => {
+          const src = nodeMap.get(edge.source_id);
+          const tgt = nodeMap.get(edge.target_id);
+          if (src && tgt) {
+            const dx = (tgt.x || 0) - (src.x || 0);
+            const dy = (tgt.y || 0) - (src.y || 0);
+            const dist = Math.sqrt(dx * dx + dy * dy) || 1;
+            const displacement = dist - springLength;
+            const force = displacement * springK;
+            const fx = (dx / dist) * force;
+            const fy = (dy / dist) * force;
 
-        node.vx = (node.vx || 0) * damping;
-        node.vy = (node.vy || 0) * damping;
+            src.vx = (src.vx || 0) + fx;
+            src.vy = (src.vy || 0) + fy;
+            tgt.vx = (tgt.vx || 0) - fx;
+            tgt.vy = (tgt.vy || 0) - fy;
+          }
+        });
 
-        // Cap speed
-        const speed = Math.sqrt((node.vx || 0) ** 2 + (node.vy || 0) ** 2);
-        if (speed > 12) {
-          node.vx = ((node.vx || 0) / speed) * 12;
-          node.vy = ((node.vy || 0) / speed) * 12;
-        }
+        // 3. Update velocity & position
+        simNodes.forEach((node) => {
+          if (draggingNodeRef.current?.id === node.id) {
+            node.vx = 0;
+            node.vy = 0;
+            return;
+          }
 
-        node.x = (node.x || 0) + (node.vx || 0);
-        node.y = (node.y || 0) + (node.vy || 0);
-      });
+          if (node.pos_x !== undefined) {
+            const targetX = node.pos_x;
+            node.vx = (node.vx || 0) + (targetX - (node.x || 0)) * 0.015;
+          }
+
+          node.vx = (node.vx || 0) * damping;
+          node.vy = (node.vy || 0) * damping;
+
+          // Cap speed
+          const speed = Math.sqrt((node.vx || 0) ** 2 + (node.vy || 0) ** 2);
+          if (speed > 12) {
+            node.vx = ((node.vx || 0) / speed) * 12;
+            node.vy = ((node.vy || 0) / speed) * 12;
+          }
+
+          node.x = (node.x || 0) + (node.vx || 0);
+          node.y = (node.y || 0) + (node.vy || 0);
+        });
+      }
 
       // --- Target Node Focus Camera Interpolation ---
       const width = canvas.clientWidth;
@@ -606,8 +682,35 @@ export const KnowledgeGraphCanvas: React.FC<KnowledgeGraphCanvasProps> = ({
         const heatmapStyle = getHeatmapColor(score);
         const style = colorMode === 'heatmap' ? heatmapStyle : baseStyle;
 
+        const inCommunity = !selectedCommunityNodeIds || selectedCommunityNodeIds.has(node.id);
+        const isVisible = nodeInLens && inCommunity;
+
         ctx.save();
-        ctx.globalAlpha = nodeInLens ? 1.0 : 0.12;
+        ctx.globalAlpha = isVisible ? 1.0 : 0.12;
+
+        // Community module halo accent
+        if (selectedCommunityNodeIds && inCommunity) {
+          ctx.save();
+          ctx.beginPath();
+          ctx.arc(nx, ny, r + 5, 0, Math.PI * 2);
+          ctx.strokeStyle = '#38bdf8';
+          ctx.lineWidth = 1.5 / k;
+          ctx.stroke();
+          ctx.restore();
+        }
+
+        // Feature: Node completed indicator glow/ring
+        if (node.is_done) {
+          ctx.save();
+          ctx.beginPath();
+          ctx.arc(nx, ny, r + 4, 0, Math.PI * 2);
+          ctx.strokeStyle = '#10b981';
+          ctx.lineWidth = 1.8 / k;
+          ctx.shadowColor = '#10b981';
+          ctx.shadowBlur = 8;
+          ctx.stroke();
+          ctx.restore();
+        }
 
         // Feature 16: Shortest path golden glow
         if (isPathNode) {
@@ -774,6 +877,32 @@ export const KnowledgeGraphCanvas: React.FC<KnowledgeGraphCanvasProps> = ({
           ctx.restore();
         }
 
+        // Done indicator badge (green circle with checkmark)
+        if (node.is_done) {
+          const doneX = nx + (node.portal_topic_id ? r + 6 : -r - 4);
+          const doneY = ny + r + 2;
+          const doneR = Math.max(5.5, 6.5 / k);
+
+          ctx.save();
+          ctx.beginPath();
+          ctx.arc(doneX, doneY, doneR, 0, Math.PI * 2);
+          ctx.fillStyle = '#10b981';
+          ctx.shadowColor = 'rgba(16, 185, 129, 0.6)';
+          ctx.shadowBlur = 6;
+          ctx.fill();
+
+          ctx.strokeStyle = '#064e3b';
+          ctx.lineWidth = 1 / k;
+          ctx.stroke();
+
+          ctx.font = `bold ${Math.max(7, 8 / k)}px sans-serif`;
+          ctx.fillStyle = '#ffffff';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText('✓', doneX, doneY + 0.5 / k);
+          ctx.restore();
+        }
+
         // Node Label & Mastery Star/%
         if (k > 0.45 || isHovered || isSelected) {
           ctx.font = `${Math.max(10, Math.min(13, 11 / k))}px Geist, -apple-system, sans-serif`;
@@ -923,6 +1052,8 @@ export const KnowledgeGraphCanvas: React.FC<KnowledgeGraphCanvasProps> = ({
         return null;
       },
       getNodes: () => simNodesRef.current.map((n) => ({ id: n.id, title: n.title, type: n.node_type })),
+      getSimNodes: () => simNodesRef.current,
+      fitGraph: () => fitGraph(),
     };
     return () => {
       delete (window as any).__graphHelper;
@@ -1293,6 +1424,7 @@ export const KnowledgeGraphCanvas: React.FC<KnowledgeGraphCanvasProps> = ({
           onSynthesizeNote={onSynthesizeNote ? (n) => onSynthesizeNote(n) : undefined}
           onDecomposeQuestion={onDecomposeQuestion ? (id) => onDecomposeQuestion(id) : undefined}
           onOpenQuiz={onOpenQuiz ? (n) => onOpenQuiz(n) : undefined}
+          onToggleDone={onToggleDone ? (n) => onToggleDone(n) : undefined}
           onDeleteNode={
             onDeleteNode
               ? (id) => {
@@ -1324,4 +1456,6 @@ export const KnowledgeGraphCanvas: React.FC<KnowledgeGraphCanvasProps> = ({
       </div>
     </div>
   );
-};
+});
+
+KnowledgeGraphCanvas.displayName = 'KnowledgeGraphCanvas';

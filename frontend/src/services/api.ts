@@ -12,6 +12,7 @@ import {
   DeepSearchResponse,
   ReviewQueueResponse,
   NodeType,
+  CommunityGroupResponse,
 } from '../types';
 
 const API_BASE = '/api';
@@ -413,6 +414,41 @@ export async function createEdge(
   if (!res.ok) {
     const err = await res.json().catch(() => ({ detail: 'Failed to create edge' }));
     throw new Error(err.detail || 'Failed to create edge');
+  }
+  return res.json();
+}
+
+export async function fetchTopicCommunities(topicId: string): Promise<CommunityGroupResponse> {
+  const res = await fetch(`${API_BASE}/topics/${topicId}/communities`);
+  if (!res.ok) throw new Error('Failed to fetch topic communities');
+  return res.json();
+}
+
+export async function toggleNodeDone(
+  nodeId: string,
+  isDone?: boolean
+): Promise<GraphNode> {
+  const res = await fetch(`${API_BASE}/nodes/${nodeId}/done`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(isDone !== undefined ? { is_done: isDone } : {}),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: 'Failed to update node status' }));
+    throw new Error(err.detail || 'Failed to update node status');
+  }
+  return res.json();
+}
+
+export async function autoOrganizeTopic(
+  topicId: string
+): Promise<{ success: boolean; topic_id: string; nodes_updated: number; full_graph: KnowledgeGraphData }> {
+  const res = await fetch(`${API_BASE}/topics/${topicId}/auto-organize`, {
+    method: 'POST',
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: 'Failed to auto-organize topic graph' }));
+    throw new Error(err.detail || 'Failed to auto-organize topic graph');
   }
   return res.json();
 }

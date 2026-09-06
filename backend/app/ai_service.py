@@ -10,6 +10,8 @@ from .schemas import (
     SubtopicExpansionResult,
     QuizBatchResult,
     InquiryAnswerResult,
+    SmartSubtopicExpansionResult,
+    SmartQuestionDecompositionResult,
 )
 
 logger = logging.getLogger("ai_service")
@@ -112,23 +114,32 @@ Requirements:
 def decompose_question_to_topics(
     question: str,
     context: str = "",
-    difficulty: str = "intermediate"
-) -> QuestionDecompositionResult:
+    difficulty: str = "intermediate",
+    existing_context: Optional[str] = None
+) -> SmartQuestionDecompositionResult:
     """
     Decomposes an academic inquiry/question into foundational underlying topics that affect it.
     Uses HIGH thinking to rigorously identify the underlying scientific/theoretical principles.
+    Aware of pre-existing graph nodes to prevent duplicate nodes.
     """
+    context_clause = f"\n\n{existing_context}\n" if existing_context else ""
+    instructions_clause = """
+Instructions:
+1. Awareness of Pre-Existing Nodes: If any governing principle, foundational law, or underlying topic is already represented in the pre-existing nodes list above, DO NOT invent a duplicate node. Instead, reference its ID/ID-prefix in 'connect_to_existing' (e.g. relation_type='affects' or 'governs', direction='existing_to_parent').
+2. New Concepts: For foundational topics that do not yet exist in the graph, define them in 'new_nodes' (2 to 4 distinct topics).
+3. Cross-Links: For any newly created topic in 'new_nodes', you may link it to other relevant pre-existing nodes via 'new_node_existing_links'.
+""" if existing_context else """
+Task:
+Identify 3 to 5 foundational academic topics, governing laws, or theoretical principles that DIRECTLY AFFECT or UNDERPIN this question in 'new_nodes'.
+"""
     prompt = f"""You are an elite epistemologist and academic researcher.
 Analyze the following deep research question or inquiry:
 Question: "{question}"
 Context: "{context}"
-Difficulty: {difficulty.upper()}
+Difficulty: {difficulty.upper()}{context_clause}
+{instructions_clause}
 
-Task:
-Identify 3 to 5 foundational academic topics, governing laws, or theoretical principles that DIRECTLY AFFECT or UNDERPIN this question.
-For example, if the question is "Why does quantum decoherence prevent macroscopic superposition?", the underlying topics affecting it are "Quantum Entanglement with Environment", "Density Matrix & Pure vs Mixed States", "Phase Damping Channels", and "Von Neumann Entropy".
-
-For each underlying topic:
+For each underlying topic in 'new_nodes':
 - Give a precise academic title
 - Specify relationship ('affects', 'prerequisite_for', or 'governs')
 - Academic domain
@@ -137,31 +148,44 @@ For each underlying topic:
 """
     raw_json = call_model_with_fallback(
         prompt=prompt,
-        response_schema=QuestionDecompositionResult,
+        response_schema=SmartQuestionDecompositionResult,
         task_type="decompose_question",
         difficulty="expert" # force high thinking for epistemological decomposition
     )
-    return QuestionDecompositionResult.model_validate_json(raw_json)
+    return SmartQuestionDecompositionResult.model_validate_json(raw_json)
 
 def expand_concept_subtopics(
     concept_title: str,
     concept_summary: str = "",
-    difficulty: str = "intermediate"
-) -> SubtopicExpansionResult:
-    prompt = f"""You are a senior academic specialist.
-Branch off 3 to 5 specialized subtopics or advanced frontiers directly emerging from the concept: "{concept_title}".
+    difficulty: str = "intermediate",
+    existing_context: Optional[str] = None
+) -> SmartSubtopicExpansionResult:
+    """
+    Branches off specialized subtopics or advanced frontiers directly emerging from the concept.
+    Aware of pre-existing graph nodes to link instead of duplicating.
+    """
+    context_clause = f"\n\n{existing_context}\n" if existing_context else ""
+    instructions_clause = """
+Instructions:
+1. Awareness of Pre-Existing Nodes: If any subtopic, prerequisite, or related concept is already represented in the pre-existing graph nodes list above, DO NOT invent a duplicate node. Instead, reference it in 'connect_to_existing' specifying its ID/ID-prefix, relationship ('subtopic_of', 'related_to', 'prerequisite_for'), and direction.
+2. New Concepts: Only define genuinely novel, unrepresented concepts in 'new_nodes' (typically 2 to 4 distinct concepts).
+3. Cross-Links: For any newly created node in 'new_nodes', you may link it to other relevant pre-existing nodes via 'new_node_existing_links'.
+""" if existing_context else """
+Provide 3 to 5 distinct, academically rigorous subtopics with domain, summary, and relation to parent in 'new_nodes'.
+"""
+    prompt = f"""You are a senior academic specialist and knowledge graph architect.
+Branch off specialized subtopics or advanced frontiers directly emerging from the concept: "{concept_title}".
 Summary: "{concept_summary}"
-Difficulty Level: {difficulty.upper()}
-
-Provide 3 to 5 distinct, academically rigorous subtopics with domain, summary, and relation to parent.
+Difficulty Level: {difficulty.upper()}{context_clause}
+{instructions_clause}
 """
     raw_json = call_model_with_fallback(
         prompt=prompt,
-        response_schema=SubtopicExpansionResult,
+        response_schema=SmartSubtopicExpansionResult,
         task_type="subtopics",
         difficulty=difficulty
     )
-    return SubtopicExpansionResult.model_validate_json(raw_json)
+    return SmartSubtopicExpansionResult.model_validate_json(raw_json)
 
 def generate_concept_quizzes(
     concept_title: str,

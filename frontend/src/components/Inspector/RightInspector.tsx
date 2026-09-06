@@ -1,10 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { GraphNode, GraphEdge, Quiz, Inquiry, DifficultyLevel, KnowledgeGraphData } from '../../types';
+import { GraphNode, GraphEdge, Quiz, Inquiry, DifficultyLevel, KnowledgeGraphData, NodeType } from '../../types';
 import { NoteTab } from './NoteTab';
 import { QuestionTab } from './QuestionTab';
 import { QuizTab } from './QuizTab';
 import { ConnectionsTab } from './ConnectionsTab';
+import { TextSelectionContextMenu } from './TextSelectionContextMenu';
 import { MathText } from '../MathText';
+import { createNode, createEdge, fetchTopicGraph, saveNodeNote } from '../../services/api';
 
 interface RightInspectorProps {
   node: GraphNode;
@@ -26,6 +28,7 @@ interface RightInspectorProps {
   onDetachQuiz?: (quizId: string) => Promise<void>;
   onGraphUpdated?: (fullGraph: KnowledgeGraphData) => void;
   onTabChange?: (tab: 'notes' | 'questions' | 'quiz' | 'connections') => void;
+  onToggleDone?: (node: GraphNode) => void;
 }
 
 export const RightInspector: React.FC<RightInspectorProps> = ({
@@ -48,12 +51,133 @@ export const RightInspector: React.FC<RightInspectorProps> = ({
   onDetachQuiz,
   onGraphUpdated,
   onTabChange,
+  onToggleDone,
 }) => {
   const [activeTab, setActiveTab] = useState<'notes' | 'questions' | 'quiz' | 'connections'>(initialTab);
+  const [selectionMenu, setSelectionMenu] = useState<{
+    selectedText: string;
+    position: { x: number; y: number };
+    canConvertToWikilink: boolean;
+    textareaElement?: HTMLTextAreaElement | null;
+  } | null>(null);
+  const [createToast, setCreateToast] = useState<string | null>(null);
 
   const handleTabClick = (tab: 'notes' | 'questions' | 'quiz' | 'connections') => {
     setActiveTab(tab);
     if (onTabChange) onTabChange(tab);
+  };
+
+  const handleInspectorContextMenu = (e: React.MouseEvent) => {
+    let text = '';
+    let textareaEl: HTMLTextAreaElement | null = null;
+    const target = e.target as HTMLElement | null;
+
+    if (target && target.tagName === 'TEXTAREA') {
+      const ta = target as HTMLTextAreaElement;
+      const start = ta.selectionStart ?? 0;
+      const end = ta.selectionEnd ?? 0;
+      if (start !== end) {
+        text = ta.value.substring(start, end).trim();
+        textareaEl = ta;
+      }
+    } else {
+      const sel = window.getSelection();
+      text = sel ? sel.toString().trim() : '';
+    }
+
+    if (text && text.length > 0) {
+      e.preventDefault();
+      setSelectionMenu({
+        selectedText: text,
+        position: { x: e.clientX, y: e.clientY },
+        canConvertToWikilink: activeTab === 'notes',
+        textareaElement: textareaEl,
+      });
+    }
+  };
+
+  const handleCreateNodeFromSelection = async ({
+    nodeType,
+    title,
+    convertToWikilink,
+  }: {
+    nodeType: NodeType;
+    title: string;
+    convertToWikilink: boolean;
+  }) => {
+    if (!selectionMenu) return;
+    const { selectedText, textareaElement } = selectionMenu;
+
+    try {
+      const posX = (node.pos_x || 400) + (nodeType === 'prerequisite' ? -260 : 260);
+      const posY = (node.pos_y || 300) + (Math.random() * 80 - 40);
+
+      const newNode = await createNode({
+        topic_id: node.topic_id,
+        title,
+        node_type: nodeType,
+        summary: selectedText,
+        content: `# ${title}\n\nExtracted from [[${node.title}]]:\n> ${selectedText}\n`,
+        parent_node_id: node.id,
+        difficulty: node.difficulty || 'intermediate',
+        pos_x: posX,
+        pos_y: posY,
+      });
+
+      let relType = 'subtopic_of';
+      let edgeType = 'subtopic_of';
+      let label = 'subtopic';
+
+      if (nodeType === 'question') {
+        relType = 'question_for';
+        edgeType = 'question_for';
+        label = 'inquiry';
+      } else if (nodeType === 'note') {
+        relType = 'note_on';
+        edgeType = 'note_on';
+        label = 'note';
+      } else if (nodeType === 'prerequisite') {
+        relType = 'prerequisite_for';
+        edgeType = 'prerequisite_for';
+        label = 'prerequisite';
+      }
+
+      await createEdge({
+        topic_id: node.topic_id,
+        source_id: nodeType === 'prerequisite' ? newNode.id : node.id,
+        target_id: nodeType === 'prerequisite' ? node.id : newNode.id,
+        relation_type: relType,
+        edge_type: edgeType,
+        label,
+      });
+
+      if (convertToWikilink) {
+        if (textareaElement) {
+          const start = textareaElement.selectionStart;
+          const end = textareaElement.selectionEnd;
+          const val = textareaElement.value;
+          const updatedVal = val.slice(0, start) + `[[${title}]]` + val.slice(end);
+          textareaElement.value = updatedVal;
+          textareaElement.dispatchEvent(new Event('input', { bubbles: true }));
+          onNodeUpdated(node.id, updatedVal);
+          await saveNodeNote(node.id, updatedVal);
+        } else if (node.content && node.content.includes(selectedText)) {
+          const updatedContent = node.content.replace(selectedText, `[[${title}]]`);
+          onNodeUpdated(node.id, updatedContent);
+          await saveNodeNote(node.id, updatedContent);
+        }
+      }
+
+      const fullGraph = await fetchTopicGraph(node.topic_id);
+      if (onGraphUpdated) {
+        onGraphUpdated(fullGraph);
+      }
+
+      setCreateToast(`Created ${nodeType} node "${title}"`);
+      setTimeout(() => setCreateToast(null), 3500);
+    } catch (err) {
+      console.error('Failed to create node from selection:', err);
+    }
   };
 
   useEffect(() => {
@@ -123,6 +247,31 @@ export const RightInspector: React.FC<RightInspectorProps> = ({
               <span style={{ fontSize: '11px', fontFamily: 'var(--font-mono)', color: 'var(--text-muted)' }}>
                 {node.difficulty.toUpperCase()}
               </span>
+            )}
+            {onToggleDone && (
+              <button
+                onClick={() => onToggleDone(node)}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '4px',
+                  cursor: 'pointer',
+                  padding: '2px 8px',
+                  borderRadius: '12px',
+                  border: node.is_done ? '1px solid #10b981' : '1px solid var(--border-subtle)',
+                  backgroundColor: node.is_done ? 'rgba(16, 185, 129, 0.15)' : 'transparent',
+                  color: node.is_done ? '#10b981' : 'var(--text-secondary)',
+                  fontSize: '11px',
+                  fontWeight: 500,
+                  transition: 'all 0.15s ease',
+                }}
+                title={node.is_done ? 'Mark as In Progress' : 'Mark as Completed'}
+              >
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                  <polyline points="20 6 9 17 4 12" />
+                </svg>
+                {node.is_done ? 'Completed' : 'Mark Done'}
+              </button>
             )}
           </div>
           <h2 style={{ fontSize: '17px', margin: 0, fontWeight: 600, wordBreak: 'break-word', lineHeight: 1.35 }}>
@@ -239,7 +388,10 @@ export const RightInspector: React.FC<RightInspectorProps> = ({
       </div>
 
       {/* Tab Content Body */}
-      <div style={{ flex: 1, padding: '18px 22px', overflowY: 'hidden', display: 'flex', flexDirection: 'column' }}>
+      <div
+        onContextMenu={handleInspectorContextMenu}
+        style={{ flex: 1, padding: '18px 22px', overflowY: 'hidden', display: 'flex', flexDirection: 'column', position: 'relative' }}
+      >
         {activeTab === 'notes' && (
           <NoteTab
             node={node}
@@ -286,6 +438,44 @@ export const RightInspector: React.FC<RightInspectorProps> = ({
           />
         )}
       </div>
+
+      {/* Context Menu on Text Selection */}
+      {selectionMenu && (
+        <TextSelectionContextMenu
+          selectedText={selectionMenu.selectedText}
+          position={selectionMenu.position}
+          currentNode={node}
+          canConvertToWikilink={selectionMenu.canConvertToWikilink}
+          onClose={() => setSelectionMenu(null)}
+          onCreateNode={handleCreateNodeFromSelection}
+        />
+      )}
+
+      {/* Creation Success Toast */}
+      {createToast && (
+        <div
+          style={{
+            position: 'absolute',
+            bottom: '20px',
+            right: '24px',
+            backgroundColor: '#064e3b',
+            border: '1px solid #10b981',
+            color: '#a7f3d0',
+            padding: '7px 14px',
+            borderRadius: '6px',
+            fontSize: '12px',
+            fontFamily: 'var(--font-sans)',
+            boxShadow: '0 4px 18px rgba(0, 0, 0, 0.5)',
+            zIndex: 1100,
+            display: 'flex',
+            alignItems: 'center',
+            gap: '6px',
+          }}
+        >
+          <span>✓</span>
+          <span>{createToast}</span>
+        </div>
+      )}
     </aside>
   );
 };

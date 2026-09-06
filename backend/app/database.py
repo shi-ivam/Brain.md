@@ -50,6 +50,7 @@ def init_db():
             review_due TEXT,
             review_count INTEGER DEFAULT 0,
             portal_topic_id TEXT DEFAULT NULL,
+            is_done INTEGER DEFAULT 0,
             FOREIGN KEY(topic_id) REFERENCES topics(id) ON DELETE CASCADE
         );
 
@@ -115,6 +116,7 @@ def init_db():
             ("review_due", "TEXT"),
             ("review_count", "INTEGER DEFAULT 0"),
             ("portal_topic_id", "TEXT DEFAULT NULL"),
+            ("is_done", "INTEGER DEFAULT 0"),
         ]
         for col_name, col_def in node_migrations:
             if col_name not in node_cols:
@@ -137,11 +139,13 @@ def init_db():
         cursor.execute("UPDATE nodes SET review_interval = 1 WHERE review_interval IS NULL")
         cursor.execute("UPDATE nodes SET ease_factor = 2.5 WHERE ease_factor IS NULL")
         cursor.execute("UPDATE nodes SET review_count = 0 WHERE review_count IS NULL")
+        cursor.execute("UPDATE nodes SET is_done = 0 WHERE is_done IS NULL")
         cursor.execute("UPDATE edges SET edge_type = COALESCE(NULLIF(relation_type, ''), 'relates_to') WHERE edge_type IS NULL OR edge_type = ''")
         cursor.execute("UPDATE edges SET label = '' WHERE label IS NULL")
 
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_nodes_review_due ON nodes(review_due)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_nodes_portal ON nodes(portal_topic_id)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_nodes_is_done ON nodes(is_done)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_edges_edge_type ON edges(edge_type)")
 
     conn.close()
@@ -181,6 +185,7 @@ def get_full_graph(topic_id: str) -> Dict[str, Any]:
     cursor.execute("SELECT * FROM nodes WHERE topic_id = ? ORDER BY created_at ASC", (topic_id,))
     node_rows = [dict(r) for r in cursor.fetchall()]
     for n in node_rows:
+        n['is_done'] = bool(n.get('is_done', 0))
         try:
             n['metadata'] = json.loads(n.get('metadata_json') or '{}')
         except Exception:
@@ -227,6 +232,7 @@ def get_node(node_id: str) -> Optional[Dict[str, Any]]:
     if not row:
         return None
     res = dict(row)
+    res['is_done'] = bool(res.get('is_done', 0))
     try:
         res["metadata"] = json.loads(res.get("metadata_json") or "{}")
     except Exception:
@@ -240,6 +246,23 @@ def get_edge(edge_id: str) -> Optional[Dict[str, Any]]:
     row = cursor.fetchone()
     conn.close()
     return dict(row) if row else None
+
+def edge_exists(topic_id: str, source_id: str, target_id: str, relation_type: Optional[str] = None) -> bool:
+    conn = get_connection()
+    cursor = conn.cursor()
+    if relation_type:
+        cursor.execute(
+            "SELECT 1 FROM edges WHERE topic_id = ? AND source_id = ? AND target_id = ? AND relation_type = ? LIMIT 1",
+            (topic_id, source_id, target_id, relation_type)
+        )
+    else:
+        cursor.execute(
+            "SELECT 1 FROM edges WHERE topic_id = ? AND source_id = ? AND target_id = ? LIMIT 1",
+            (topic_id, source_id, target_id)
+        )
+    row = cursor.fetchone()
+    conn.close()
+    return bool(row)
 
 def sync_topic_wikilinks(topic_id: str) -> int:
     """
@@ -747,8 +770,8 @@ def import_topic_from_json(data: dict) -> str:
                 """INSERT INTO nodes (
                     id, topic_id, parent_node_id, title, node_type, summary, content, difficulty,
                     metadata_json, pos_x, pos_y, created_at, updated_at, mastery_score,
-                    review_interval, ease_factor, review_due, review_count, portal_topic_id
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                    review_interval, ease_factor, review_due, review_count, portal_topic_id, is_done
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (
                     nid,
                     new_topic_id,
@@ -768,7 +791,8 @@ def import_topic_from_json(data: dict) -> str:
                     n.get("ease_factor", 2.5),
                     n.get("review_due") or now,
                     n.get("review_count", 0),
-                    n.get("portal_topic_id")
+                    n.get("portal_topic_id"),
+                    1 if n.get("is_done") else 0
                 )
             )
             
@@ -889,4 +913,199 @@ def update_node_portal(node_id: str, portal_topic_id: Optional[str]) -> Optional
     except Exception:
         updated["metadata"] = {}
     return updated
+
+def toggle_node_done(node_id: str, is_done: Optional[bool] = None) -> Optional[Dict[str, Any]]:
+    """
+    Toggles or sets the is_done completion status for a node.
+    If is_done is None, flips the current boolean state.
+    """
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM nodes WHERE id = ?", (node_id,))
+    row = cursor.fetchone()
+    if not row:
+        conn.close()
+        return None
+    
+    current_done = bool(row["is_done"])
+    next_done = not current_done if is_done is None else bool(is_done)
+    next_done_int = 1 if next_done else 0
+    now = now_iso()
+    
+    with conn:
+        cursor.execute(
+            "UPDATE nodes SET is_done = ?, updated_at = ? WHERE id = ?",
+            (next_done_int, now, node_id)
+        )
+        cursor.execute("SELECT * FROM nodes WHERE id = ?", (node_id,))
+        updated = dict(cursor.fetchone())
+    conn.close()
+    
+    updated["is_done"] = bool(updated.get("is_done", 0))
+    try:
+        updated["metadata"] = json.loads(updated.get("metadata_json") or "{}")
+    except Exception:
+        updated["metadata"] = {}
+    return updated
+
+def auto_organize_topic_graph(topic_id: str) -> Optional[Dict[str, Any]]:
+    """
+    Recalculates clean, collision-free, hierarchical layout positions (pos_x, pos_y)
+    for all nodes in the topic knowledge graph and persists them to SQLite.
+    Follows an academic DAG progression:
+      - Layer -1: Prerequisites (X ~ 80)
+      - Layer 0: Root Concept (X ~ 360)
+      - Layer 1: Core Pillars / Subtopics (X ~ 640)
+      - Layer 2: Deeper Concepts (X ~ 920)
+      - Layer 3+: Deep inquiries / quizzes / leaves (X ~ 1200+)
+    """
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM topics WHERE id = ?", (topic_id,))
+    topic_row = cursor.fetchone()
+    if not topic_row:
+        conn.close()
+        return None
+
+    cursor.execute("SELECT * FROM nodes WHERE topic_id = ?", (topic_id,))
+    node_rows = [dict(r) for r in cursor.fetchall()]
+    if not node_rows:
+        conn.close()
+        return get_full_graph(topic_id)
+
+    cursor.execute("SELECT * FROM edges WHERE topic_id = ?", (topic_id,))
+    edge_rows = [dict(r) for r in cursor.fetchall()]
+
+    nodes_by_id = {n["id"]: n for n in node_rows}
+    root_id = topic_row["root_node_id"]
+    if not root_id or root_id not in nodes_by_id:
+        candidates = [n["id"] for n in node_rows if not n.get("parent_node_id") and n.get("node_type") == "concept"]
+        if not candidates:
+            candidates = [n["id"] for n in node_rows if not n.get("parent_node_id")]
+        root_id = candidates[0] if candidates else node_rows[0]["id"]
+
+    # Adjacency: parent -> children
+    children_map = collections.defaultdict(list)
+    parent_map = {}
+    for n in node_rows:
+        pid = n.get("parent_node_id")
+        if pid and pid in nodes_by_id:
+            children_map[pid].append(n["id"])
+            parent_map[n["id"]] = pid
+
+    # Edge relationships for parent/child hierarchies
+    for e in edge_rows:
+        src = e["source_id"]
+        tgt = e["target_id"]
+        rel = e.get("relation_type") or e.get("edge_type") or ""
+        if src in nodes_by_id and tgt in nodes_by_id:
+            if rel == "subtopic_of":
+                if src not in parent_map and src != root_id:
+                    parent_map[src] = tgt
+                    children_map[tgt].append(src)
+            elif rel in ("decomposes_into", "tested_concepts"):
+                if tgt not in parent_map and tgt != root_id:
+                    parent_map[tgt] = src
+                    children_map[src].append(tgt)
+
+    # Layer assignment
+    layers: Dict[str, int] = {}
+
+    # 1. Prerequisites go to layer -1
+    prereq_ids = set()
+    for n in node_rows:
+        if n.get("node_type") == "prerequisite":
+            prereq_ids.add(n["id"])
+    for e in edge_rows:
+        if e.get("relation_type") == "prerequisite_for" and e["target_id"] == root_id:
+            prereq_ids.add(e["source_id"])
+
+    for pid in prereq_ids:
+        layers[pid] = -1
+
+    # 2. Root is layer 0
+    layers[root_id] = 0
+
+    # 3. BFS from root for remaining nodes
+    queue = collections.deque([root_id])
+    visited = {root_id} | prereq_ids
+    while queue:
+        curr_id = queue.popleft()
+        curr_layer = max(0, layers.get(curr_id, 0))
+        for child_id in children_map.get(curr_id, []):
+            if child_id not in visited:
+                visited.add(child_id)
+                layers[child_id] = curr_layer + 1
+                queue.append(child_id)
+
+    # 4. Disconnected or unvisited nodes
+    for n in node_rows:
+        nid = n["id"]
+        if nid not in layers:
+            nt = n.get("node_type")
+            if nt == "prerequisite":
+                layers[nid] = -1
+            elif nt in ("question", "quiz", "note"):
+                layers[nid] = 2
+            else:
+                layers[nid] = 1
+
+    # Group nodes by layer
+    layer_groups = collections.defaultdict(list)
+    for n in node_rows:
+        layer_groups[layers[n["id"]]].append(n)
+
+    center_y = 360.0
+    base_x = 360.0
+    x_step = 280.0
+
+    new_positions: Dict[str, Tuple[float, float]] = {}
+
+    sorted_layer_keys = sorted(layer_groups.keys())
+    for l_key in sorted_layer_keys:
+        layer_nodes = layer_groups[l_key]
+        if l_key == 0:
+            new_positions[root_id] = (base_x, center_y)
+            other_roots = [n for n in layer_nodes if n["id"] != root_id]
+            if other_roots:
+                M = len(layer_nodes)
+                spacing = max(90.0, min(140.0, 700.0 / max(1, M)))
+                y_start = center_y - ((M - 1) * spacing) / 2.0
+                idx = 0
+                for n in layer_nodes:
+                    y_pos = round(y_start + idx * spacing, 1)
+                    new_positions[n["id"]] = (base_x, y_pos)
+                    idx += 1
+            continue
+
+        def sort_key(node):
+            pid = parent_map.get(node["id"])
+            if pid and pid in new_positions:
+                parent_y = new_positions[pid][1]
+            else:
+                parent_y = center_y
+            return (parent_y, node.get("title", ""))
+
+        layer_nodes.sort(key=sort_key)
+
+        M = len(layer_nodes)
+        spacing = max(80.0, min(140.0, 720.0 / max(1, M)))
+        y_start = center_y - ((M - 1) * spacing) / 2.0
+        layer_x = round(base_x + (l_key * x_step), 1)
+
+        for idx, n in enumerate(layer_nodes):
+            y_pos = round(y_start + idx * spacing, 1)
+            new_positions[n["id"]] = (layer_x, y_pos)
+
+    # Persist in SQLite
+    now = now_iso()
+    with conn:
+        for nid, (nx, ny) in new_positions.items():
+            conn.execute(
+                "UPDATE nodes SET pos_x = ?, pos_y = ?, updated_at = ? WHERE id = ?",
+                (nx, ny, now, nid)
+            )
+    conn.close()
+
+    return get_full_graph(topic_id)
 
